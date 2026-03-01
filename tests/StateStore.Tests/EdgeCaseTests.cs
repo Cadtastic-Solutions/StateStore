@@ -15,8 +15,8 @@ public sealed class EdgeCaseTests
         var store = new StateStoreImplementation(serializer, pipeline);
 
         var largeObject = new string('x', 100_000);
-        await store.SetAsync("large", largeObject);
-        var result = await store.GetAsync<string>("large");
+        await store.SetAsync("large", largeObject, TestContext.Current.CancellationToken);
+        var result = await store.GetAsync<string>("large", TestContext.Current.CancellationToken);
         Assert.Equal(largeObject, result);
     }
 
@@ -28,8 +28,8 @@ public sealed class EdgeCaseTests
         var pipeline = new MiddlewarePipeline([], provider);
         var store = new StateStoreImplementation(serializer, pipeline);
 
-        await store.SetAsync("empty", "");
-        var result = await store.GetAsync<string>("empty");
+        await store.SetAsync("empty", "", TestContext.Current.CancellationToken);
+        var result = await store.GetAsync<string>("empty", TestContext.Current.CancellationToken);
         Assert.Equal("", result);
     }
 
@@ -42,8 +42,8 @@ public sealed class EdgeCaseTests
         var store = new StateStoreImplementation(serializer, pipeline);
 
         var emptyArray = Array.Empty<int>();
-        await store.SetAsync("emptyArray", emptyArray);
-        var result = await store.GetAsync<int[]>("emptyArray") ?? [];
+        await store.SetAsync("emptyArray", emptyArray, TestContext.Current.CancellationToken);
+        var result = await store.GetAsync<int[]>("emptyArray", TestContext.Current.CancellationToken) ?? [];
         Assert.Empty(result);
     }
 
@@ -55,6 +55,6 @@ public sealed class EdgeCaseTests
         var pipeline = new MiddlewarePipeline([], provider);
         var store = new StateStoreImplementation(serializer, pipeline);
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(async () => await store.GetAsync<int>("does_not_exist"));
+        await Assert.ThrowsAsync<KeyNotFoundException>(async () => await store.GetAsync<int>("does_not_exist", TestContext.Current.CancellationToken));
     }
 }

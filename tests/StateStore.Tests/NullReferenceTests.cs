@@ -1,7 +1,6 @@
 using StateStore.Middleware;
 using StateStore.Providers.InMemory;
 using StateStore.Serialization;
-using Xunit;
 
 namespace StateStore.Tests;
 
@@ -15,7 +14,7 @@ public sealed class NullReferenceTests
         var pipeline = new MiddlewarePipeline([], provider);
         var store = new StateStoreImplementation(serializer, pipeline);
 
-        await Assert.ThrowsAsync<ArgumentNullException>(async () => await store.SetAsync(null!, 123));
+        await Assert.ThrowsAsync<ArgumentNullException>(async () => await store.SetAsync(null!, 123, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -26,7 +25,7 @@ public sealed class NullReferenceTests
         var pipeline = new MiddlewarePipeline([], provider);
         var store = new StateStoreImplementation(serializer, pipeline);
 
-        await Assert.ThrowsAsync<ArgumentNullException>(async () => await store.GetAsync<int>(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(async () => await store.GetAsync<int>(null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -37,7 +36,7 @@ public sealed class NullReferenceTests
         var pipeline = new MiddlewarePipeline([], provider);
         var store = new StateStoreImplementation(serializer, pipeline);
 
-        await Assert.ThrowsAsync<ArgumentNullException>(async () => await store.UpsertAsync<int>(null!, 1, x => x + 1));
+        await Assert.ThrowsAsync<ArgumentNullException>(async () => await store.UpsertAsync<int>("", 1, x => x + 1, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -48,6 +47,6 @@ public sealed class NullReferenceTests
         var pipeline = new MiddlewarePipeline([], provider);
         var store = new StateStoreImplementation(serializer, pipeline);
 
-        await Assert.ThrowsAsync<ArgumentNullException>(async () => await store.UpsertAsync("key", 1, null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(async () => await store.UpsertAsync("key", 1, null!, TestContext.Current.CancellationToken));
     }
 }

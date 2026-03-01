@@ -22,7 +22,7 @@ public sealed class TypedStateStoreTests
     [Fact]
     public async Task GetAsync_ReturnsDefault_WhenNoStateExists_Async()
     {
-        var result = await _typedStore.GetAsync();
+        var result = await _typedStore.GetAsync(TestContext.Current.CancellationToken);
         Assert.Null(result);
     }
 
@@ -30,8 +30,8 @@ public sealed class TypedStateStoreTests
     public async Task SetAsync_ThenGetAsync_ReturnsValue_Async()
     {
         var settings = new AppSettings { Theme = "dark", FontSize = 14 };
-        await _typedStore.SetAsync(settings);
-        var result = await _typedStore.GetAsync();
+        await _typedStore.SetAsync(settings, TestContext.Current.CancellationToken);
+        var result = await _typedStore.GetAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("dark", result.Theme);
         Assert.Equal(14, result.FontSize);
@@ -40,9 +40,9 @@ public sealed class TypedStateStoreTests
     [Fact]
     public async Task DeleteAsync_RemovesState_Async()
     {
-        await _typedStore.SetAsync(new AppSettings { Theme = "light" });
-        await _typedStore.DeleteAsync();
-        var exists = await _typedStore.ExistsAsync();
+        await _typedStore.SetAsync(new AppSettings { Theme = "light" }, TestContext.Current.CancellationToken);
+        await _typedStore.DeleteAsync(TestContext.Current.CancellationToken);
+        var exists = await _typedStore.ExistsAsync(TestContext.Current.CancellationToken);
         Assert.False(exists);
     }
 
@@ -50,8 +50,8 @@ public sealed class TypedStateStoreTests
     public async Task UpsertAsync_InsertsWhenNoStateExists_Async()
     {
         var insertValue = new AppSettings { Theme = "dark", FontSize = 12 };
-        await _typedStore.UpsertAsync(insertValue, existing => existing with { FontSize = 16 });
-        var result = await _typedStore.GetAsync();
+        await _typedStore.UpsertAsync(insertValue, existing => existing with { FontSize = 16 }, TestContext.Current.CancellationToken);
+        var result = await _typedStore.GetAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("dark", result.Theme);
         Assert.Equal(12, result.FontSize);
@@ -60,11 +60,11 @@ public sealed class TypedStateStoreTests
     [Fact]
     public async Task UpsertAsync_UpdatesWhenStateExists_Async()
     {
-        await _typedStore.SetAsync(new AppSettings { Theme = "dark", FontSize = 12 });
+        await _typedStore.SetAsync(new AppSettings { Theme = "dark", FontSize = 12 }, TestContext.Current.CancellationToken);
         await _typedStore.UpsertAsync(
             new AppSettings { Theme = "default" },
-            existing => existing with { FontSize = existing.FontSize + 2 });
-        var result = await _typedStore.GetAsync();
+            existing => existing with { FontSize = existing.FontSize + 2 }, TestContext.Current.CancellationToken);
+        var result = await _typedStore.GetAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("dark", result.Theme);
         Assert.Equal(14, result.FontSize);
@@ -73,14 +73,14 @@ public sealed class TypedStateStoreTests
     [Fact]
     public async Task ExistsAsync_ReturnsTrue_WhenStateExists_Async()
     {
-        await _typedStore.SetAsync(new AppSettings { Theme = "dark" });
-        Assert.True(await _typedStore.ExistsAsync());
+        await _typedStore.SetAsync(new AppSettings { Theme = "dark" }, TestContext.Current.CancellationToken);
+        Assert.True(await _typedStore.ExistsAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task ExistsAsync_ReturnsFalse_WhenNoStateExists_Async()
     {
-        Assert.False(await _typedStore.ExistsAsync());
+        Assert.False(await _typedStore.ExistsAsync(TestContext.Current.CancellationToken));
     }
 
     public sealed record AppSettings

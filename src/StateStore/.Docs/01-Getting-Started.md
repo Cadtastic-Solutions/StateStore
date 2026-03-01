@@ -4,7 +4,7 @@ This guide walks you through installing StateStore and writing your first state 
 
 ## Prerequisites
 
-- .NET 8 SDK or later (StateStore targets both `net8.0` and `net9.0`)
+- .NET 8 SDK or later (StateStore currently targets`net8.0`, `net9.0` and `net10.0`)
 - A C# project (console app, ASP.NET Core, worker service, or class library)
 
 ## Installation

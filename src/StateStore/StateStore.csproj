@@ -8,19 +8,38 @@
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
+  <!-- NuGet-specific properties for Release builds -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>StateStore</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Cadtastic Solutions</Authors>
+    <Company>Cadtastic Solutions</Company>
+    <Description>Flexible, testable state storage library for .NET supporting multiple providers and middleware.</Description>
+    <PackageTags>state;storage;middleware;dotnet;testable</PackageTags>
+    <RepositoryUrl>https://github.com/Cadtastic-Solutions/StateStore</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Cadtastic-Solutions/StateStore</PackageProjectUrl>
+    <!-- Add other NuGet properties here as needed -->
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="StateStore.Tests" />
   </ItemGroup>
 
-
+  <ItemGroup>
+    <None Include="readme.md" Pack="true" PackagePath="docs/readme.md" />
+    <None Include=".Docs\*.md" Pack="true" PackagePath="docs/" />
+  </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
-    <PackageReference Include="MongoDB.Driver" Version="2.25.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.3" />
+    <PackageReference Include="MongoDB.Driver" Version="3.6.0" />
   </ItemGroup>
 
 </Project>

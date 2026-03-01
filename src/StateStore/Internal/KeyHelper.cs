@@ -14,7 +14,7 @@ internal static class KeyHelper
     {
         if (string.IsNullOrWhiteSpace(key))
         {
-            throw new ArgumentException("State store key must not be null, empty, or whitespace.", nameof(key));
+            ArgumentNullException.ThrowIfNull(key, "State store key must not be null, empty, or whitespace.");
         }
     }
 
@@ -23,8 +23,5 @@ internal static class KeyHelper
     /// </summary>
     /// <typeparam name="T">The type to derive the key from.</typeparam>
     /// <returns>A stable key string derived from the type.</returns>
-    public static string DeriveKey<T>()
-    {
-        return typeof(T).FullName ?? typeof(T).Name;
-    }
+    public static string DeriveKey<T>() => typeof(T).FullName ?? typeof(T).Name;
 }

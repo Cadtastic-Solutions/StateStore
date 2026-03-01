@@ -11,7 +11,7 @@ public sealed class MiddlewarePipelineTests
     {
         var order = new List<string>();
         var provider = new InMemoryStorageProvider();
-        await provider.WriteAsync("key1", "data"u8.ToArray());
+        await provider.WriteAsync("key1", "data"u8.ToArray(), TestContext.Current.CancellationToken);
 
         var middleware1 = new TrackingMiddleware("M1", order);
         var middleware2 = new TrackingMiddleware("M2", order);
@@ -62,7 +62,7 @@ public sealed class MiddlewarePipelineTests
         var result = await pipeline.ReadAsync("key1", CancellationToken.None);
 
         Assert.Equal(fakeData, result);
-        Assert.False(await provider.ExistsAsync("key1"));
+        Assert.False(await provider.ExistsAsync("key1", TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public sealed class MiddlewarePipelineTests
     {
         var order = new List<string>();
         var provider = new InMemoryStorageProvider();
-        await provider.WriteAsync("key1", "data"u8.ToArray());
+        await provider.WriteAsync("key1", "data"u8.ToArray(), TestContext.Current.CancellationToken);
 
         var middleware = new TrackingMiddleware("M1", order);
         var pipeline = new MiddlewarePipeline([middleware], provider);

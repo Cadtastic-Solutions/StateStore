@@ -62,9 +62,7 @@ internal sealed class StateStoreImplementation : IStateStore
             catch (Exception ex) when (ex is not StateStoreException and not OperationCanceledException)
             {
                 _logger?.LogError(ex, "Failed to read state for key '{Key}'", key);
-                throw new StorageProviderException(
-                    $"Failed to read state for key '{key}'.",
-                    key, "Read", _pipeline.GetType(), ex);
+                throw new StorageProviderException($"Failed to read state for key '{key}'.", key, "Read", _pipeline.GetType(), ex);
             }
         }
 

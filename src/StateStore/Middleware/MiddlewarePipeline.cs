@@ -7,21 +7,15 @@ namespace StateStore.Middleware;
 /// Executes a chain of <see cref="IStateStoreMiddleware"/> components in registration order,
 /// terminating at the <see cref="IStorageProvider"/>.
 /// </summary>
-internal sealed class MiddlewarePipeline
+/// <remarks>
+/// Initializes a new instance of <see cref="MiddlewarePipeline"/>.
+/// </remarks>
+/// <param name="middlewares">The ordered list of middleware components.</param>
+/// <param name="provider">The terminal storage provider.</param>
+internal sealed class MiddlewarePipeline(IReadOnlyList<IStateStoreMiddleware> middlewares, IStorageProvider provider)
 {
-    private readonly IReadOnlyList<IStateStoreMiddleware> _middlewares;
-    private readonly IStorageProvider _provider;
-
-    /// <summary>
-    /// Initializes a new instance of <see cref="MiddlewarePipeline"/>.
-    /// </summary>
-    /// <param name="middlewares">The ordered list of middleware components.</param>
-    /// <param name="provider">The terminal storage provider.</param>
-    public MiddlewarePipeline(IReadOnlyList<IStateStoreMiddleware> middlewares, IStorageProvider provider)
-    {
-        _middlewares = middlewares;
-        _provider = provider;
-    }
+    private readonly IReadOnlyList<IStateStoreMiddleware> _middlewares = middlewares;
+    private readonly IStorageProvider _provider = provider;
 
     /// <summary>
     /// Executes the read pipeline for the specified key.
@@ -29,10 +23,7 @@ internal sealed class MiddlewarePipeline
     /// <param name="key">The key to read.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The raw bytes, or <c>null</c> if not found.</returns>
-    public ValueTask<byte[]?> ReadAsync(string key, CancellationToken cancellationToken)
-    {
-        return BuildReadChain(0, key, cancellationToken);
-    }
+    public ValueTask<byte[]?> ReadAsync(string key, CancellationToken cancellationToken) => BuildReadChain(0, key, cancellationToken);
 
     /// <summary>
     /// Executes the write pipeline for the specified key.

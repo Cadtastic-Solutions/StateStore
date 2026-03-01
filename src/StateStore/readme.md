@@ -13,35 +13,35 @@
 
 | # | Guide | Description |
 |---|-------|-------------|
-| 01 | [Getting Started](01-Getting-Started.md) | Installation, quick start with DI and standalone, project structure |
-| 02 | [Core Concepts](02-Core-Concepts.md) | Architectural layers, design principles, the StoredState envelope |
+| 01 | [Getting Started](.Docs/01-Getting-Started.md) | Installation, quick start with DI and standalone, project structure |
+| 02 | [Core Concepts](.Docs/02-Core-Concepts.md) | Architectural layers, design principles, the StoredState envelope |
 
 ### Using StateStore
 
 | # | Guide | Description |
 |---|-------|-------------|
-| 03 | [Basic Usage](03-Basic-Usage.md) | Full `IStateStore` API reference: Get, Set, Upsert, Delete, Exists |
-| 04 | [Typed State Store](04-Typed-State-Store.md) | Type-scoped `ITypedStateStore<T>` with automatic key derivation |
-| 05 | [Storage Providers](05-Storage-Providers.md) | InMemory and FileSystem providers, choosing a backend |
-| 06 | [Serialization](06-Serialization.md) | JSON serializer configuration, custom serializers, AOT considerations |
-| 07 | [Middleware](07-Middleware.md) | Pipeline model, built-in LoggingMiddleware, writing custom middleware |
-| 08 | [Concurrency](08-Concurrency.md) | Per-key reader-writer locks, UpsertAsync atomicity, thread safety |
-| 09 | [Auto-Save](09-Auto-Save.md) | Periodic and shutdown strategies, dirty key tracking |
+| 03 | [Basic Usage](.Docs/03-Basic-Usage.md) | Full `IStateStore` API reference: Get, Set, Upsert, Delete, Exists |
+| 04 | [Typed State Store](.Docs/04-Typed-State-Store.md) | Type-scoped `ITypedStateStore<T>` with automatic key derivation |
+| 05 | [Storage Providers](.Docs/05-Storage-Providers.md) | InMemory and FileSystem providers, choosing a backend |
+| 06 | [Serialization](.Docs/06-Serialization.md) | JSON serializer configuration, custom serializers, AOT considerations |
+| 07 | [Middleware](.Docs/07-Middleware.md) | Pipeline model, built-in LoggingMiddleware, writing custom middleware |
+| 08 | [Concurrency](.Docs/08-Concurrency.md) | Per-key reader-writer locks, UpsertAsync atomicity, thread safety |
+| 09 | [Auto-Save](.Docs/09-Auto-Save.md) | Periodic and shutdown strategies, dirty key tracking |
 
 ### Integration
 
 | # | Guide | Description |
 |---|-------|-------------|
-| 10 | [Dependency Injection](10-Dependency-Injection.md) | `AddStateStore` registration, ASP.NET Core and worker service integration |
-| 11 | [Standalone Usage](11-Standalone-Usage.md) | `StateStoreBuilder` for DI-free scenarios |
+| 10 | [Dependency Injection](.Docs/10-Dependency-Injection.md) | `AddStateStore` registration, ASP.NET Core and worker service integration |
+| 11 | [Standalone Usage](.Docs/11-Standalone-Usage.md) | `StateStoreBuilder` for DI-free scenarios |
 
 ### Reference
 
 | # | Guide | Description |
 |---|-------|-------------|
-| 12 | [Error Handling](12-Error-Handling.md) | Exception hierarchy, error patterns, resilient reads |
-| 13 | [Testing](13-Testing.md) | Using InMemoryStorageProvider, mocking, concurrency tests |
-| 14 | [Extensibility](14-Extensibility.md) | Custom providers, serializers, middleware, and auto-save strategies |
+| 12 | [Error Handling](.Docs/12-Error-Handling.md) | Exception hierarchy, error patterns, resilient reads |
+| 13 | [Testing](.Docs/13-Testing.md) | Using InMemoryStorageProvider, mocking, concurrency tests |
+| 14 | [Extensibility](.Docs/14-Extensibility.md) | Custom providers, serializers, middleware, and auto-save strategies |
 
 ## Quick Reference
 

@@ -1,8 +1,9 @@
 using BenchmarkDotNet.Attributes;
-using StateStore.Serialization;
 using Microsoft.VSDiagnostics;
+using StateStore.Serialization;
 
 namespace StateStore.Benchmarks;
+
 [CPUUsageDiagnoser]
 public class JsonStateSerializerBenchmarks
 {

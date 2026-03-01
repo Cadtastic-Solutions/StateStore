@@ -10,8 +10,8 @@ public sealed class StateStoreBuilderTests
             .UseJsonSerializer()
             .Build();
 
-        await store.SetAsync("key", "value");
-        var result = await store.GetAsync<string>("key");
+        await store.SetAsync("key", "value", TestContext.Current.CancellationToken);
+        var result = await store.GetAsync<string>("key", TestContext.Current.CancellationToken);
         Assert.Equal("value", result);
     }
 
@@ -20,8 +20,8 @@ public sealed class StateStoreBuilderTests
     {
         var store = new StateStoreBuilder().Build();
 
-        await store.SetAsync("key", 42);
-        var result = await store.GetAsync<int>("key");
+        await store.SetAsync("key", 42, TestContext.Current.CancellationToken);
+        var result = await store.GetAsync<int>("key", TestContext.Current.CancellationToken);
         Assert.Equal(42, result);
     }
 
@@ -33,8 +33,8 @@ public sealed class StateStoreBuilderTests
             .UseJsonSerializer()
             .Build<TestConfig>();
 
-        await typedStore.SetAsync(new TestConfig { Setting = "on" });
-        var result = await typedStore.GetAsync();
+        await typedStore.SetAsync(new TestConfig { Setting = "on" }, TestContext.Current.CancellationToken);
+        var result = await typedStore.GetAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("on", result.Setting);
     }
@@ -50,8 +50,8 @@ public sealed class StateStoreBuilderTests
                 .UseJsonSerializer()
                 .Build();
 
-            await store.SetAsync("key", "persisted");
-            var result = await store.GetAsync<string>("key");
+            await store.SetAsync("key", "persisted", TestContext.Current.CancellationToken);
+            var result = await store.GetAsync<string>("key", TestContext.Current.CancellationToken);
             Assert.Equal("persisted", result);
         }
         finally
