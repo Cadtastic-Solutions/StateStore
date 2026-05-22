@@ -9,12 +9,14 @@ internal static class KeyHelper
     /// Validates that the key is non-null, non-empty, and non-whitespace.
     /// </summary>
     /// <param name="key">The key to validate.</param>
-    /// <exception cref="ArgumentException">Thrown when the key is null, empty, or whitespace.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when the key is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">Thrown when the key is empty or whitespace.</exception>
     public static void ValidateKey(string key)
     {
+        ArgumentNullException.ThrowIfNull(key);
         if (string.IsNullOrWhiteSpace(key))
         {
-            ArgumentNullException.ThrowIfNull(key, "State store key must not be null, empty, or whitespace.");
+            throw new ArgumentException("State store key must not be empty or whitespace.", nameof(key));
         }
     }
 

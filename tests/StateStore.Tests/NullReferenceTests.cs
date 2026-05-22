@@ -36,7 +36,7 @@ public sealed class NullReferenceTests
         var pipeline = new MiddlewarePipeline([], provider);
         var store = new StateStoreImplementation(serializer, pipeline);
 
-        await Assert.ThrowsAsync<ArgumentNullException>(async () => await store.UpsertAsync<int>("", 1, x => x + 1, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentNullException>(async () => await store.UpsertAsync<int>(null!, 1, x => x + 1, TestContext.Current.CancellationToken));
     }
 
     [Fact]

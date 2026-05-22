@@ -117,9 +117,9 @@ public sealed class StateStoreTests
     }
 
     [Fact]
-    public async Task GetAsync_ThrowsArgumentException_ForNullKey_Async()
+    public async Task GetAsync_ThrowsArgumentNullException_ForNullKey_Async()
     {
-        await Assert.ThrowsAsync<ArgumentException>(() => _store.GetAsync<string>(null!, TestContext.Current.CancellationToken).AsTask());
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _store.GetAsync<string>(null!, TestContext.Current.CancellationToken).AsTask());
     }
 
     [Fact]
@@ -135,9 +135,9 @@ public sealed class StateStoreTests
     }
 
     [Fact]
-    public async Task SetAsync_ThrowsArgumentException_ForNullKey_Async()
+    public async Task SetAsync_ThrowsArgumentNullException_ForNullKey_Async()
     {
-        await Assert.ThrowsAsync<ArgumentException>(() => _store.SetAsync(null!, "value", TestContext.Current.CancellationToken).AsTask());
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _store.SetAsync(null!, "value", TestContext.Current.CancellationToken).AsTask());
     }
 
     [Fact]
