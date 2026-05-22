@@ -8,4 +8,15 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!--
+      CVE-2026-44788 / GHSA-6c8g-7p36-r338: path traversal in SharpCompress.WriteToDirectory().
+      Pulled transitively by MongoDB.Driver for wire-protocol compression. We never call
+      WriteToDirectory(), so the vulnerable code path is unreachable. No patched SharpCompress
+      version is available (all versions <= 0.47.4 affected). Re-evaluate when SharpCompress
+      ships a fix.
+    -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-6c8g-7p36-r338" />
+  </ItemGroup>
+
 </Project>
