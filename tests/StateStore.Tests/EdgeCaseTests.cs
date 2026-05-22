@@ -48,13 +48,15 @@ public sealed class EdgeCaseTests
     }
 
     [Fact]
-    public async Task Get_NonExistentKey_ThrowsAsync()
+    public async Task Get_NonExistentKey_ReturnsDefault_Async()
     {
         var provider = new InMemoryStorageProvider();
         var serializer = new JsonStateSerializer();
         var pipeline = new MiddlewarePipeline([], provider);
         var store = new StateStoreImplementation(serializer, pipeline);
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(async () => await store.GetAsync<int>("does_not_exist", TestContext.Current.CancellationToken));
+        var result = await store.GetAsync<int>("does_not_exist", TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result);
     }
 }
