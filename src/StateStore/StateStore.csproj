@@ -34,11 +34,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.8" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.12" />
+    <!--
+      Microsoft.Data.Sqlite 10.0.12+ depends on SQLitePCLRaw 2.1.12, whose native lib ships SQLite 3.53.3.
+      Earlier versions pulled SQLitePCLRaw.lib.e_sqlite3 2.1.11 (SQLite 3.49.1), flagged by NuGet audit
+      as NU1903 for CVE-2025-6965 / GHSA-2m69-gcr7-jv3q (SQLite < 3.50.2 memory corruption).
+      Do not downgrade below 10.0.12 without re-checking the audit.
+    -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageReference Include="MongoDB.Driver" Version="3.8.1" />
   </ItemGroup>
 

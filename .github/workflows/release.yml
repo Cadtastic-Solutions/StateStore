@@ -1,0 +1,248 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+# No default grants. Each job declares exactly the permissions it needs.
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  # Never kill an in-flight release partway through uploading assets.
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Resolve version from tag
+        id: version
+        run: |
+          set -euo pipefail
+          # Read the tag from the runner environment rather than interpolating the
+          # github.ref_name expression into this script, so a crafted ref cannot inject shell.
+          TAG="$GITHUB_REF_NAME"
+          # SemVer 2 without build metadata. NuGet strips a +suffix from the package
+          # filename, which would break the version check in the Verify step, and its
+          # strict parser rejects leading zeros in numeric pre-release identifiers mid-build.
+          PATTERN='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
+          if [[ ! "$TAG" =~ $PATTERN ]]; then
+            echo "::error::Tag '$TAG' is not a release tag. Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease, with no leading zeros in numeric parts (use -rc.1, not -rc.01) and no +build metadata."
+            exit 1
+          fi
+          # Named RELEASE_VERSION rather than VERSION on purpose: MSBuild promotes
+          # environment variables to properties, so a VERSION variable would silently
+          # become the Version property for every dotnet command in this job.
+          RELEASE_VERSION="${TAG#v}"
+          echo "RELEASE_VERSION=$RELEASE_VERSION" >> "$GITHUB_ENV"
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Releasing version $RELEASE_VERSION from tag $TAG"
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Nothing after this step talks to git, and dotnet pack executes MSBuild from
+          # every csproj under src/, so do not leave the token on disk for that code.
+          persist-credentials: false
+
+      - name: Set up .NET from global.json
+        if: hashFiles('global.json') != ''
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Set up .NET 10
+        if: hashFiles('global.json') == ''
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore StateStore.sln
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          # Test and Pack run with --no-build and must pass exactly the same -p: values
+          # as this step, or the assemblies and the package will disagree about the version.
+          dotnet build StateStore.sln -c Release --no-restore \
+            -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true
+
+      - name: Test
+        id: test
+        run: |
+          set -euo pipefail
+          dotnet test StateStore.sln -c Release --no-build \
+            -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true \
+            --logger trx --results-directory artifacts/test-results
+
+      - name: Upload test results
+        if: failure() && steps.test.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: artifacts/test-results
+          if-no-files-found: ignore
+
+      - name: Pack
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          projects=(src/*/*.csproj)
+          if [[ ${#projects[@]} -eq 0 ]]; then
+            echo "::error::No projects found under src/. Nothing to pack."
+            exit 1
+          fi
+          {
+            echo "### Packed projects"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          for proj in "${projects[@]}"; do
+            echo "Packing $proj"
+            dotnet pack "$proj" -c Release --no-build -o artifacts/packages \
+              -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true
+            echo "- \`$proj\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Verify packages
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          nested=$(find src -mindepth 3 -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*/.*/*')
+          if [[ -n "$nested" ]]; then
+            echo "::error::Projects nested too deep for the src/*/*.csproj glob and excluded from this release: $(echo "$nested" | tr '\n' ' ')"
+            exit 1
+          fi
+
+          packages=(artifacts/packages/*.nupkg)
+          if [[ ${#packages[@]} -eq 0 ]]; then
+            echo "::error::No .nupkg was produced."
+            exit 1
+          fi
+
+          projects=(src/*/*.csproj)
+          if [[ ${#packages[@]} -ne ${#projects[@]} ]]; then
+            echo "::error::Packed ${#projects[@]} project(s) but found ${#packages[@]} .nupkg file(s). A project under src/ produced no package (IsPackable=false?)."
+            exit 1
+          fi
+
+          {
+            echo
+            echo "### Packages"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for pkg in artifacts/packages/*.nupkg artifacts/packages/*.snupkg; do
+            case "$pkg" in
+              *".$RELEASE_VERSION.nupkg"|*".$RELEASE_VERSION.snupkg") ;;
+              *)
+                echo "::error::Package '$(basename "$pkg")' does not carry version $RELEASE_VERSION."
+                exit 1
+                ;;
+            esac
+            echo "- \`$(basename "$pkg")\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          ls -l artifacts/packages
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: artifacts/packages/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      PRERELEASE: ${{ needs.build.outputs.prerelease }}
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v8
+        with:
+          name: packages
+          path: artifacts/packages
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # A stale output reference yields an empty string, not an error. Left
+          # unchecked, empty reads as "not a pre-release" and a -rc tag would be
+          # published as the latest stable release.
+          if [[ "$PRERELEASE" != "true" && "$PRERELEASE" != "false" ]]; then
+            echo "::error::prerelease flag from the build job is '$PRERELEASE'; expected true or false."
+            exit 1
+          fi
+          assets=(artifacts/packages/*.nupkg artifacts/packages/*.snupkg)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "::error::No package assets to attach to release $TAG."
+            exit 1
+          fi
+          # The existence probe doubles as a draft and pre-release check. gh release
+          # create works in three API calls (create as draft, upload assets, publish),
+          # so a failure partway through leaves a draft, and a plain retry would attach
+          # assets to it and exit 0 with nothing published.
+          if existing="$(gh release view "$TAG" --json isDraft,isPrerelease --jq '.isDraft, .isPrerelease' 2>/dev/null)"; then
+            # Two lines, one per field. Anything but two makes both variables the whole
+            # string, which fails the flag comparison below rather than mispublishing.
+            draft="${existing%%$'\n'*}"
+            existing_prerelease="${existing##*$'\n'}"
+            echo "Release $TAG already exists. Uploading assets."
+            gh release upload "$TAG" --clobber "${assets[@]}"
+            if [[ "$draft" == "true" ]]; then
+              echo "::error::Release $TAG exists as a draft. Assets are attached but nothing is published. Publish it, or delete the draft and re-run."
+              exit 1
+            fi
+            # The update path changes nothing but assets, so a wrong pre-release flag is
+            # an error rather than a correction. Left unchecked, a release hand-created
+            # as stable for a -rc tag stands as the repository's latest stable release.
+            if [[ "$existing_prerelease" != "$PRERELEASE" ]]; then
+              echo "::error::Release $TAG is marked isPrerelease=$existing_prerelease but its version requires prerelease=$PRERELEASE. Assets are attached. Correct the flag on the release, or delete the release and re-run."
+              exit 1
+            fi
+          else
+            echo "Creating release $TAG."
+            # --verify-tag earns its place: without it, gh creates a missing tag from
+            # the default branch HEAD and publishes a release whose contents disagree
+            # with the tag it names.
+            args=(--title "$TAG" --generate-notes --verify-tag)
+            if [[ "$PRERELEASE" == "true" ]]; then
+              args+=(--prerelease)
+            fi
+            gh release create "$TAG" "${args[@]}" "${assets[@]}"
+          fi
+          {
+            echo
+            echo "### Release"
+            echo
+            echo "- $TAG: $(gh release view "$TAG" --json url --jq .url)"
+          } >> "$GITHUB_STEP_SUMMARY"
