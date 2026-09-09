@@ -39,9 +39,9 @@ One block deliberately does not `cd` to the repository: Task 2.2 Step 4 runs ins
 
 | Fact | Evidence |
 |---|---|
-| The complete workflow this plan produces is 206 lines and passes actionlint 1.7.12 with shellcheck 0.11.0 active, zero findings | Assembled and linted during planning |
+| The complete workflow this plan produces is 219 lines and passes actionlint 1.7.12 with shellcheck 0.11.0 active, zero findings | Assembled and linted during planning, re-measured after each review amendment |
 | The version step handles all 18 tag cases correctly, both accept and reject, including `prerelease=false` | Harness in Task 1.1 run against the assembled file |
-| The Verify packages step behaves correctly across five cases including version mismatch and nested projects | Task 2.2 Step 4 run against a synthetic tree |
+| The Verify packages step behaves correctly across six cases including version mismatch, nested projects, and a project that produced no package | Task 2.2 Step 4 run against a synthetic tree |
 | `dotnet pack --no-build` works despite `GeneratePackageOnBuild=true` for Release | Local probe produced `StateStore.0.0.1-probe.nupkg` |
 | A command-line `-p:Version=` overrides the csproj's `1.0.0` and flows into `AssemblyVersion` | Same probe |
 | `actions/upload-artifact@v7` pairs with `actions/download-artifact@v8` | download-artifact v8's release notes describe supporting upload-artifact v7's direct uploads; the majors are the intended pairing, not a skew |
@@ -55,7 +55,7 @@ One block deliberately does not `cd` to the repository: Task 2.2 Step 4 runs ins
 
 | File | Responsibility | Status |
 |---|---|---|
-| `.github/workflows/release.yml` | The entire deliverable. Tag validation, version derivation, build, test, pack, artifact upload, release creation. 206 lines when complete. | Create (Chunks 1 to 3) |
+| `.github/workflows/release.yml` | The entire deliverable. Tag validation, version derivation, build, test, pack, artifact upload, release creation. 219 lines when complete. | Create (Chunks 1 to 3) |
 | `docs/superpowers/specs/2026-09-09-release-workflow-design.md` | The spec for this work. Its status line, Verification section, and one stale command are updated once the workflow is proven. | Modify (Task 5.1) |
 | `docs/superpowers/plans/2026-05-22-repo-restructure.md` | Unrelated pending plan. Gains a warning note plus four corrected version literals. | Modify (Task 5.2) |
 | `docs/superpowers/specs/2026-05-22-repo-restructure-design.md` | That plan's spec. One stale version literal corrected. | Modify (Task 5.2) |
@@ -414,6 +414,10 @@ cat >> .github/workflows/release.yml <<'YML'
 
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Nothing after this step talks to git, and dotnet pack executes MSBuild from
+          # every csproj under src/, so do not leave the token on disk for that code.
+          persist-credentials: false
 
       - name: Set up .NET from global.json
         if: hashFiles('global.json') != ''
@@ -468,7 +472,7 @@ This was verified during planning, so actionlint should accept `hashFiles` in a 
 
 then change the two setup conditions to `steps.sdkpin.outputs.pinned == 'true'` and `== 'false'`.
 
-Taking that fallback changes two later expectations, and both are stated as checksums, so note them now: Task 2.3 Step 1's step list becomes twelve names with `Detect global.json` third, and Chunk 3 Step 1's `wc -l` reports 216 rather than 206. Neither is then a transcription error.
+Taking that fallback changes two later expectations, and both are stated as checksums, so note them now: Task 2.3 Step 1's step list becomes twelve names with `Detect global.json` third, and Chunk 3 Step 1's `wc -l` reports 229 rather than 219. Neither is then a transcription error.
 
 - [ ] **Step 3: Commit**
 
@@ -479,7 +483,10 @@ git commit -m "Add checkout and SDK setup to release workflow
 
 Selects the SDK from global.json when present so the restructure's
 rollForward: latestPatch pin resolves, otherwise installs .NET 10."
+wc -l .github/workflows/release.yml
 ```
+
+Expected: `1 file changed, 19 insertions(+)` and `77 .github/workflows/release.yml`. The heredoc is nineteen lines including its leading blank line.
 
 ### Task 2.2: Prove the pack and verify mechanics locally
 
@@ -546,6 +553,12 @@ if [[ ${#packages[@]} -eq 0 ]]; then
   exit 1
 fi
 
+projects=(src/*/*.csproj)
+if [[ ${#packages[@]} -ne ${#projects[@]} ]]; then
+  echo "::error::Packed ${#projects[@]} project(s) but found ${#packages[@]} .nupkg file(s). A project under src/ produced no package (IsPackable=false?)."
+  exit 1
+fi
+
 {
   echo
   echo "### Packages"
@@ -569,9 +582,11 @@ SH
 wc -l "$SCRATCH/verify.sh"
 ```
 
-Expected: `33 /c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan/verify.sh`.
+Expected: `39 /c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan/verify.sh`.
 
-- [ ] **Step 4: Test the verify logic against five cases**
+The project-count check is what makes the per-project pack loop honest. `dotnet pack` on a project whose `IsPackable` evaluates to `false` exits 0 and writes nothing, so without the count a project could vanish from a release while the run stayed green. With one project today the zero-package check covers it; the count is for the restructure, which adds two more.
+
+- [ ] **Step 4: Test the verify logic against six cases**
 
 This runs in a synthetic tree under `$SCRATCH`, never against the real repository, so the nested-project cases cannot disturb your checkout.
 
@@ -607,6 +622,11 @@ rm -rf src/Providers
 mkdir -p src/.claude/worktrees/wt/src/StateStore
 touch src/.claude/worktrees/wt/src/StateStore/StateStore.csproj
 RELEASE_VERSION=0.0.1-probe GITHUB_STEP_SUMMARY="$T/summary.md" bash "$SCRATCH/verify.sh"; echo "exit: $?"
+
+echo "=== case 6: two projects, one package ==="
+mkdir -p src/StateStore.Other
+touch src/StateStore.Other/StateStore.Other.csproj
+RELEASE_VERSION=0.0.1-probe GITHUB_STEP_SUMMARY="$T/summary.md" bash "$SCRATCH/verify.sh"; echo "exit: $?"
 ```
 
 Expected:
@@ -618,6 +638,7 @@ Expected:
 | 3 | `::error::No .nupkg was produced.` then `exit: 1` |
 | 4 | One `::error::` naming both `Bar.csproj` and `Foo.csproj` on a single line, then `exit: 1` |
 | 5 | `exit: 0` |
+| 6 | `::error::Packed 2 project(s) but found 1 .nupkg file(s). A project under src/ produced no package (IsPackable=false?).` then `exit: 1` |
 
 Case 4 proving the message is one line matters: GitHub annotations do not accept embedded newlines, so a multi-line value would surface only the first path. The order of the two filenames within that line is not asserted, because `find` does not guarantee traversal order.
 
@@ -633,11 +654,12 @@ export SCRATCH="/c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan"
 rm -rf "$SCRATCH/packages" "$SCRATCH/verifytest" "$SCRATCH/test-results"
 rm -f src/StateStore/bin/Release/StateStore.0.0.1-probe.nupkg
 rm -f src/StateStore/bin/Release/StateStore.0.0.1-probe.snupkg
+find . -path ./src/.claude -prune -o -path '*/obj/Release/*.0.0.1-probe.nuspec' -print -exec rm -f {} +
 ls -1 src/StateStore/bin/Release/*.nupkg 2>/dev/null || echo "(no packages in bin/Release)"
 git status --short
 ```
 
-Expected: no probe-versioned package remains. A pre-existing `StateStore.1.0.0.nupkg` may still be listed; it predates this work, is gitignored, and is deliberately left alone, which is why the probe file is deleted by name rather than by glob.
+Expected: no probe-versioned package remains. A pre-existing `StateStore.1.0.0.nupkg` may still be listed; it predates this work, is gitignored, and is deliberately left alone, which is why the probe file is deleted by name rather than by glob. The `find` prints and removes the intermediate `*.0.0.1-probe.nuspec` files that `GeneratePackageOnBuild` leaves under `obj/Release/` for the library and, because it is packable, the benchmarks project. They are gitignored and would be overwritten by the next build, so this is tidiness rather than correctness.
 
 `git status --short` should show only the pre-existing noise described in Before you start. Nothing new, and nothing under `src/StateStore` or `artifacts/`. Both `bin/` and `artifacts/` are gitignored.
 
@@ -663,10 +685,13 @@ cat >> .github/workflows/release.yml <<'YML'
       - name: Build
         run: |
           set -euo pipefail
+          # Test and Pack run with --no-build and must pass exactly the same -p: values
+          # as this step, or the assemblies and the package will disagree about the version.
           dotnet build StateStore.sln -c Release --no-restore \
             -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true
 
       - name: Test
+        id: test
         run: |
           set -euo pipefail
           dotnet test StateStore.sln -c Release --no-build \
@@ -674,7 +699,7 @@ cat >> .github/workflows/release.yml <<'YML'
             --logger trx --results-directory artifacts/test-results
 
       - name: Upload test results
-        if: failure()
+        if: failure() && steps.test.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
           name: test-results
@@ -715,6 +740,12 @@ cat >> .github/workflows/release.yml <<'YML'
           packages=(artifacts/packages/*.nupkg)
           if [[ ${#packages[@]} -eq 0 ]]; then
             echo "::error::No .nupkg was produced."
+            exit 1
+          fi
+
+          projects=(src/*/*.csproj)
+          if [[ ${#packages[@]} -ne ${#projects[@]} ]]; then
+            echo "::error::Packed ${#projects[@]} project(s) but found ${#packages[@]} .nupkg file(s). A project under src/ produced no package (IsPackable=false?)."
             exit 1
           fi
 
@@ -820,7 +851,68 @@ git commit -m "Add build, test, and pack steps to release workflow
 Packs each project directly under src/ with the tag version, asserts
 every package filename carries that version, and fails on a project
 nested too deep for the glob rather than dropping it silently."
+wc -l .github/workflows/release.yml
 ```
+
+Expected: `1 file changed, 96 insertions(+)` and `173 .github/workflows/release.yml`. Chunk 3 adds the remaining 46 lines to reach the 219-line checksum.
+
+### Task 2.4: Apply the Chunk 2 quality-review amendments
+
+**Files:**
+- Modify: `.github/workflows/release.yml`
+- Modify: `$SCRATCH/verify.sh` (scratchpad)
+
+**Why this task exists.** Tasks 2.1 to 2.3 were first executed as commits `630133d` and `c13179b`, leaving a 160-line file. The code quality review of that state found one gap that matters and three cheap hardenings: `dotnet pack` on a project whose `IsPackable` evaluates to `false` exits 0 and writes nothing, so a project could vanish from a release while the run stayed green; the `--no-build` coupling between Build, Test, and Pack was unstated at the point an editor would break it; the test-results upload fired on any earlier failure, not only a test failure; and checkout left git credentials on disk for `dotnet pack` to read. All four are now folded into the heredocs in Tasks 2.1, 2.2, and 2.3 above, so a fresh executor gets the final form directly and this task is a no-op for them. If your checkout is at `c13179b`, do the following. The appends in Tasks 2.1 and 2.3 are not idempotent, so the file is first reset to its Chunk 1 form.
+
+- [ ] **Step 1: Reset the workflow to the Chunk 1 content**
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+git show e2bb913:.github/workflows/release.yml > .github/workflows/release.yml
+wc -l .github/workflows/release.yml
+```
+
+Expected: `58 .github/workflows/release.yml`. Commit `e2bb913` is the amended Chunk 1 file; it is the same blob as at `1f3df1e`.
+
+- [ ] **Step 2: Re-run Task 2.1 Step 1**
+
+Expected: the four step names in order, then `wc -l .github/workflows/release.yml` reports 77.
+
+- [ ] **Step 3: Re-run Task 2.2 Step 3 and Step 4**
+
+Expected: `39` for `verify.sh`, and all six cases behave as tabulated.
+
+- [ ] **Step 4: Re-run Task 2.3 Steps 1 to 4**
+
+Expected: eleven step names in order; `identical` from the verify diff; actionlint prints nothing and exits 0; the harness reports `PASS: all 18 cases behaved as specified`.
+
+- [ ] **Step 5: Confirm the diff against the previous commit is only the intended amendments**
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+git add .github/workflows/release.yml
+git diff --cached --stat
+git diff --cached | grep '^-' | grep -v '^---'
+wc -l .github/workflows/release.yml
+```
+
+Expected: `1 file changed, 14 insertions(+), 1 deletion(-)`; the only removed line is `        if: failure()`; and `173 .github/workflows/release.yml`. The fourteen added lines are the `with:` block under checkout (four lines), the two-line Build comment, `id: test`, the replacement `if:` line, and the six-line project-count block. Anything else is a transcription error.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+git commit -m "Harden release workflow build job after review
+
+Assert one package per project under src/: dotnet pack on a project
+whose IsPackable is false exits 0 and writes nothing, so a project
+could otherwise vanish from a release on a green run. Scope the
+test-results upload to a test failure, drop git credentials after
+checkout since nothing later needs them, and name the --no-build
+coupling where an editor would break it."
+```
+
+Expected: `1 file changed, 14 insertions(+), 1 deletion(-)`.
 
 ---
 
@@ -890,7 +982,7 @@ YML
 wc -l .github/workflows/release.yml
 ```
 
-Expected: `206 .github/workflows/release.yml`. This number is the whole-file checksum for this plan: a different count means a transcription error somewhere in Chunks 1 to 3, not a design problem.
+Expected: `219 .github/workflows/release.yml`. This number is the whole-file checksum for this plan: a different count means a transcription error somewhere in Chunks 1 to 3, not a design problem.
 
 - [ ] **Step 2: Lint**
 
@@ -1413,8 +1505,8 @@ The plan is complete when all of these hold. The three rows marked gated depend 
 |---|---|---|---|
 | 1 | The version step accepts and rejects exactly as specified, and derives the right version and pre-release flag | `bash "$SCRATCH/test-version-step.sh"` prints PASS for all 18 cases | No |
 | 2 | The workflow is valid and shellcheck-clean | actionlint exits 0 with no output | No |
-| 3 | The assembled file matches this plan | `wc -l .github/workflows/release.yml` reports 206, or 216 if Task 2.1's `hashFiles` fallback was taken | No |
-| 4 | The verify logic catches mismatched versions, missing packages, and nested projects | Task 2.2 Step 4's five cases behave as tabulated | No |
+| 3 | The assembled file matches this plan | `wc -l .github/workflows/release.yml` reports 219, or 229 if Task 2.1's `hashFiles` fallback was taken | No |
+| 4 | The verify logic catches mismatched versions, missing packages, nested projects, and a project that produced no package | Task 2.2 Step 4's six cases behave as tabulated | No |
 | 5 | A command-line version overrides the csproj value | The local probe produced `StateStore.0.0.1-probe.nupkg` | No |
 | 6 | Every packable project is reachable by the glob | `find src -mindepth 3 -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*/.*/*'` prints nothing | No |
 | 7 | `build` cannot write to the repository | `permissions: contents: read` on `build`, `write` only on `release` | No |
