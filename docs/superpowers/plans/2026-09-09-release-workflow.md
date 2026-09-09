@@ -826,7 +826,7 @@ Expected: no output before `exit: 0`.
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
-grep -n -E "^  (build|release):|^    (needs|runs-on|outputs|permissions):|^      contents: (read|write)" .github/workflows/release.yml
+grep -E "^  (build|release):|^    (needs|runs-on|outputs|permissions):|^      contents: (read|write)" .github/workflows/release.yml
 ```
 
 Expected, in this order:
@@ -973,9 +973,14 @@ Expected: `RUN_ID` holds a number, and the watch ends with `exit: 0` after both 
 
 If `RUN_ID` comes back empty, the run has not registered yet. Wait a few seconds and re-run the block. An empty `RUN_ID` makes `gh run watch` fail on a missing argument rather than silently watching the wrong run, which is the point of filtering by tag.
 
-On failure, read the logs and fix the workflow before retrying:
+On failure, read the logs and fix the workflow before retrying. This block re-derives `RUN_ID`, since the variable from the previous block is gone:
 
 ```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+export MSYS_NO_PATHCONV=1
+REPO=Cadtastic-Solutions/StateStore
+TAG=v0.0.1-ci.1
+RUN_ID=$(gh run list --repo "$REPO" --branch "$TAG" --limit 1 --json databaseId --jq '.[0].databaseId')
 gh run view "$RUN_ID" --repo "$REPO" --log-failed
 ```
 
@@ -1285,6 +1290,7 @@ echo "ticked:   $(grep -c '^- \[x\]' docs/superpowers/plans/2026-09-09-release-w
 Expected: the ticked count matches the number of steps you performed, and every remaining unticked step has a note explaining why.
 
 ```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
 git add docs/superpowers/plans/2026-09-09-release-workflow.md
 git commit -m "Mark release workflow plan complete
 
@@ -1327,7 +1333,7 @@ The plan is complete when all of these hold. The three rows marked gated depend 
 |---|---|---|---|
 | 1 | The version step accepts and rejects exactly as specified, and derives the right version and pre-release flag | `bash "$SCRATCH/test-version-step.sh"` prints PASS for all 18 cases | No |
 | 2 | The workflow is valid and shellcheck-clean | actionlint exits 0 with no output | No |
-| 3 | The assembled file matches this plan | `wc -l .github/workflows/release.yml` reports 181 | No |
+| 3 | The assembled file matches this plan | `wc -l .github/workflows/release.yml` reports 181, or 191 if Task 2.1's `hashFiles` fallback was taken | No |
 | 4 | The verify logic catches mismatched versions, missing packages, and nested projects | Task 2.2 Step 4's five cases behave as tabulated | No |
 | 5 | A command-line version overrides the csproj value | The local probe produced `StateStore.0.0.1-probe.nupkg` | No |
 | 6 | Every packable project is reachable by the glob | `find src -mindepth 3 -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*/.*/*'` prints nothing | No |
