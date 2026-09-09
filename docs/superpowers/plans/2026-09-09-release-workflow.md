@@ -14,7 +14,7 @@
 
 ## Before you start
 
-**Working directory.** Every command block in this plan opens with the same three-line preamble:
+**Working directory.** Each command block runs in a fresh shell. Neither the working directory nor any exported variable survives from the previous step, so **every block re-establishes exactly the context it needs.** Run each block as written and do not add or remove setup lines. Most blocks begin with:
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -22,11 +22,13 @@ export SCRATCH="/c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan"
 mkdir -p "$SCRATCH"
 ```
 
-Do not skip it or assume it carries over. Each command block runs in a fresh shell, so neither the working directory nor `$SCRATCH` persists between steps. Some sessions open in `src/` rather than the repository root, which is why the `cd` is absolute. Nothing under `$SCRATCH` is ever committed.
+Some sessions open in `src/` rather than the repository root, which is why the `cd` is absolute. Nothing under `$SCRATCH` is ever committed.
+
+One block deliberately does not `cd` to the repository: Task 2.2 Step 4 runs inside a synthetic tree under `$SCRATCH`, and adding a `cd` to the repository root there would make its test cases create directories inside the real checkout. It is labelled where it appears.
 
 **Two expected warnings.** Neither is a failure:
 
-1. `git add` on any file prints `warning: in the working copy of '<path>', LF will be replaced by CRLF the next time Git touches it`. Git's system config sets `core.autocrlf=true`, and `.gitattributes` sets `* text=auto`, so files are stored with LF and checked out with CRLF. That is the desired arrangement: the Linux runner reads the LF copy from the repository.
+1. `git add` prints `warning: in the working copy of '<path>', LF will be replaced by CRLF the next time Git touches it` whenever it actually updates the index entry. Git's system config sets `core.autocrlf=true`, and `.gitattributes` sets `* text=auto`, so files are stored with LF and checked out with CRLF. That is the desired arrangement: the Linux runner reads the LF copy from the repository. Re-staging an already-staged identical file prints nothing, so the warning's absence is not a signal either way.
 2. `git status --short` shows pre-existing noise unrelated to this work, currently ` M .claude/settings.local.json` and `?? src/.claude/`. The second is a nested git worktree. Leave both alone.
 
 **Already verified during planning.** These do not need re-checking, and a failure in any of them means a transcription error rather than a design problem:
@@ -41,7 +43,7 @@ Do not skip it or assume it carries over. Each command block runs in a fresh she
 | `actions/upload-artifact@v7` pairs with `actions/download-artifact@v8` | download-artifact v8's release notes describe supporting upload-artifact v7's direct uploads; the majors are the intended pairing, not a skew |
 | `gh run watch` requires a positional run ID | `gh run watch --help` shows `USAGE: gh run watch <run-id> [flags]` |
 
-**Out of scope.** The spec's Follow-ups list a PR-triggered `ci.yml` and a nuget.org publish job. Neither is in this plan. Task 5.3 is the one deliberate exception to that boundary, for the reason given there.
+**Out of scope.** The spec's Follow-ups list a PR-triggered `ci.yml` and a nuget.org publish job. Neither is in this plan. Task 5.2, which corrects a separate pending plan, is the one deliberate exception to that boundary, for the reason given there.
 
 ---
 
@@ -50,9 +52,10 @@ Do not skip it or assume it carries over. Each command block runs in a fresh she
 | File | Responsibility | Status |
 |---|---|---|
 | `.github/workflows/release.yml` | The entire deliverable. Tag validation, version derivation, build, test, pack, artifact upload, release creation. 181 lines when complete. | Create (Chunks 1 to 3) |
-| `docs/superpowers/specs/2026-09-09-release-workflow-design.md` | The spec. Its status line and Verification section are updated once the workflow is proven. | Modify (Task 5.1) |
-| `docs/superpowers/plans/2026-09-09-release-workflow.md` | This plan. Checkboxes ticked as work completes. | Modify (Task 5.2) |
-| `docs/superpowers/plans/2026-05-22-repo-restructure.md` | Unrelated pending plan. Gains a warning note plus three corrected version literals. | Modify (Task 5.3) |
+| `docs/superpowers/specs/2026-09-09-release-workflow-design.md` | The spec for this work. Its status line, Verification section, and one stale command are updated once the workflow is proven. | Modify (Task 5.1) |
+| `docs/superpowers/plans/2026-05-22-repo-restructure.md` | Unrelated pending plan. Gains a warning note plus four corrected version literals. | Modify (Task 5.2) |
+| `docs/superpowers/specs/2026-05-22-repo-restructure-design.md` | That plan's spec. One stale version literal corrected. | Modify (Task 5.2) |
+| `docs/superpowers/plans/2026-09-09-release-workflow.md` | This plan. Checkboxes ticked as work completes. | Modify (Task 5.3) |
 
 The workflow is a single file because its two jobs share one trigger, one version derivation, and one artifact. Splitting it would duplicate the tag contract. Reusable-workflow extraction is not warranted for one caller.
 
@@ -263,9 +266,9 @@ export SCRATCH="/c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan"
 bash "$SCRATCH/test-version-step.sh"; echo "exit: $?"
 ```
 
-Expected: 18 lines each beginning `  ok`, then `PASS: all 18 cases behaved as specified` and `exit: 0`.
+Expected: 18 lines each beginning `  ok`, then a blank line, then `PASS: all 18 cases behaved as specified` and `exit: 0`.
 
-If an accept case fails, the regex was transcribed with an error. Compare it character by character against the spec's Release-tag pattern section. Do not edit the harness to match a broken pattern.
+If an **accept** case fails, the regex is too strict or the version derivation is wrong. If a **reject** case fails, the regex is too permissive, which is the direction that ships a bad package version. Either way, compare the pattern character by character against the spec's Release-tag pattern section, whose accept and reject lists are the source of the harness tables. Do not edit the harness to match a broken pattern.
 
 - [ ] **Step 3: Stage the file and confirm it is stored with LF**
 
@@ -283,6 +286,9 @@ A result reading `ASCII text, with CRLF line terminators` is the failure case an
 
 ### Task 1.3: Lint and commit
 
+**Files:**
+- Modify: `.github/workflows/release.yml` (staged and committed; no content change)
+
 - [ ] **Step 1: Run actionlint**
 
 ```bash
@@ -295,6 +301,8 @@ Expected: no output before `exit: 0`. actionlint 1.7.12 checks YAML validity, ex
 
 actionlint does not validate that referenced actions or their versions exist. Those were confirmed current during planning.
 
+If the binary is missing on the machine you are working from, install it with `winget install rhysd.actionlint` and re-run. The hardcoded path above is where winget places it.
+
 - [ ] **Step 2: Commit**
 
 ```bash
@@ -305,6 +313,10 @@ git commit -m "Add release workflow with tag validation
 Validates a pushed v* tag against the release-tag pattern and derives
 the package version from it. Build, pack, and release steps follow."
 ```
+
+Expected: `1 file changed, 41 insertions(+)` and a line creating `.github/workflows/release.yml`.
+
+If the commit reports more than one file, something else was staged. The working tree carries an unstaged modification to `.claude/settings.local.json` that must not be swept in. Check with `git show --stat HEAD` and reset if needed.
 
 ---
 
@@ -344,7 +356,7 @@ cat >> .github/workflows/release.yml <<'YML'
           dotnet-version: 10.0.x
 YML
 
-grep -n '^      - name:' .github/workflows/release.yml
+grep '^      - name:' .github/workflows/release.yml
 ```
 
 Expected, in this order:
@@ -384,6 +396,8 @@ This was verified during planning, so actionlint should accept `hashFiles` in a 
 
 then change the two setup conditions to `steps.sdkpin.outputs.pinned == 'true'` and `== 'false'`.
 
+Taking that fallback changes two later expectations, and both are stated as checksums, so note them now: Task 2.3 Step 1's step list becomes twelve names with `Detect global.json` third, and Chunk 3 Step 1's `wc -l` reports 191 rather than 181. Neither is then a transcription error.
+
 - [ ] **Step 3: Commit**
 
 ```bash
@@ -409,6 +423,7 @@ rm -rf "$SCRATCH/packages" && mkdir -p "$SCRATCH/packages"
 VERSION=0.0.1-probe
 dotnet restore StateStore.sln
 dotnet build StateStore.sln -c Release --no-restore -p:Version="$VERSION" -p:ContinuousIntegrationBuild=true
+dotnet test StateStore.sln -c Release --no-build -p:Version="$VERSION" -p:ContinuousIntegrationBuild=true --logger trx --results-directory "$SCRATCH/test-results"
 shopt -s nullglob
 for proj in src/*/*.csproj; do
   dotnet pack "$proj" -c Release --no-build -o "$SCRATCH/packages" -p:Version="$VERSION" -p:ContinuousIntegrationBuild=true
@@ -416,9 +431,11 @@ done
 ls -l "$SCRATCH/packages"
 ```
 
-Expected: exactly one file, `StateStore.0.0.1-probe.nupkg`. No `.snupkg` yet; symbol packages arrive with the restructure, and every check in this plan treats them as optional.
+Expected: the test run passes, and the pack output is exactly one file, `StateStore.0.0.1-probe.nupkg`. No `.snupkg` yet; symbol packages arrive with the restructure, and every check in this plan treats them as optional.
 
 The filename carrying `0.0.1-probe` rather than `1.0.0` is the proof that a command-line `Version` overrides the csproj.
+
+The `dotnet test` invocation is included here, with only the results directory changed, so that every command the CI job runs has been executed locally at least once. The `--logger trx` form is correct for this project because it uses `Microsoft.NET.Test.Sdk` with the VSTest runner; a project on the newer Microsoft.Testing.Platform would need `--report-trx` instead.
 
 - [ ] **Step 2: Confirm the glob's depth assumption**
 
@@ -486,6 +503,8 @@ Expected: `33 /c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan/ver
 
 This runs in a synthetic tree under `$SCRATCH`, never against the real repository, so the nested-project cases cannot disturb your checkout.
 
+**This block deliberately has no `cd` to the repository root.** Do not add one. Cases 4 and 5 create directories named `src/Providers` and `src/.claude`, which must land in the synthetic tree.
+
 ```bash
 export SCRATCH="/c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan"
 T="$SCRATCH/verifytest"
@@ -528,7 +547,9 @@ Expected:
 | 4 | One `::error::` naming both `Bar.csproj` and `Foo.csproj` on a single line, then `exit: 1` |
 | 5 | `exit: 0` |
 
-Case 4 proving the message is one line matters: GitHub annotations do not accept embedded newlines, so a multi-line value would surface only the first path.
+Case 4 proving the message is one line matters: GitHub annotations do not accept embedded newlines, so a multi-line value would surface only the first path. The order of the two filenames within that line is not asserted, because `find` does not guarantee traversal order.
+
+Note what these cases do not cover: the `.snupkg` arm of the version check is never exercised, because no symbol package exists until the restructure enables `IncludeSymbols`. The arm is present so that it works when they appear.
 
 - [ ] **Step 5: Clean up the probe output**
 
@@ -537,12 +558,16 @@ Case 4 proving the message is one line matters: GitHub annotations do not accept
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
 export SCRATCH="/c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan"
-rm -rf "$SCRATCH/packages" "$SCRATCH/verifytest"
-rm -f src/StateStore/bin/Release/*.nupkg src/StateStore/bin/Release/*.snupkg
+rm -rf "$SCRATCH/packages" "$SCRATCH/verifytest" "$SCRATCH/test-results"
+rm -f src/StateStore/bin/Release/StateStore.0.0.1-probe.nupkg
+rm -f src/StateStore/bin/Release/StateStore.0.0.1-probe.snupkg
+ls -1 src/StateStore/bin/Release/*.nupkg 2>/dev/null || echo "(no packages in bin/Release)"
 git status --short
 ```
 
-Expected: only the pre-existing noise described in Before you start. Nothing new, and nothing under `src/StateStore` or `artifacts/`. Both `bin/` and `artifacts/` are gitignored.
+Expected: no probe-versioned package remains. A pre-existing `StateStore.1.0.0.nupkg` may still be listed; it predates this work, is gitignored, and is deliberately left alone, which is why the probe file is deleted by name rather than by glob.
+
+`git status --short` should show only the pre-existing noise described in Before you start. Nothing new, and nothing under `src/StateStore` or `artifacts/`. Both `bin/` and `artifacts/` are gitignored.
 
 ### Task 2.3: Add the build, test, and pack steps
 
@@ -648,7 +673,7 @@ cat >> .github/workflows/release.yml <<'YML'
           if-no-files-found: error
 YML
 
-grep -n '^      - name:' .github/workflows/release.yml
+grep '^      - name:' .github/workflows/release.yml
 ```
 
 Expected, in this order:
@@ -669,7 +694,29 @@ Expected, in this order:
 
 The summary line for each project is written after its `dotnet pack` succeeds, so a failed pack cannot leave a summary claiming the project was packed.
 
-- [ ] **Step 2: Lint**
+- [ ] **Step 2: Confirm the verify block matches the version you tested**
+
+The verify logic now exists twice, once as `$SCRATCH/verify.sh` and once inside the YAML at ten spaces of indentation. Extract it back out and diff, so a transcription slip cannot leave CI running logic that was never tested.
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+export SCRATCH="/c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan"
+awk '
+  /^      - name: Verify packages$/ { found=1; next }
+  found && /^        run: \|$/ { capture=1; found=0; next }
+  capture {
+    if ($0 ~ /^          / || $0 ~ /^[[:space:]]*$/) { sub(/^          /, ""); print; next }
+    capture=0
+  }
+' .github/workflows/release.yml > "$SCRATCH/verify-from-yaml.sh"
+diff -B "$SCRATCH/verify.sh" "$SCRATCH/verify-from-yaml.sh" && echo "identical"
+```
+
+Expected: `identical`, with no diff output above it. The `-B` flag is needed because the extraction picks up the blank line that separates this step from the next, leaving one trailing newline the script file does not have.
+
+Any other difference means the block was retyped rather than copied. Take the tested version in `$SCRATCH/verify.sh` as authoritative, correct the YAML, and re-run Task 2.2 Step 4 afterwards.
+
+- [ ] **Step 3: Lint**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -679,7 +726,7 @@ echo "exit: $?"
 
 Expected: no output before `exit: 0`. shellcheck runs over every `run:` block here, so quoting mistakes surface now.
 
-- [ ] **Step 3: Re-run the version-step harness**
+- [ ] **Step 4: Re-run the version-step harness**
 
 The file changed, so confirm the extraction still lands on the version step. The harness fails loudly if the first `run: |` block is no longer the one holding `PATTERN=`.
 
@@ -691,7 +738,7 @@ bash "$SCRATCH/test-version-step.sh"; echo "exit: $?"
 
 Expected: `PASS: all 18 cases behaved as specified` and `exit: 0`.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -833,7 +880,13 @@ Every step here touches the public repository `Cadtastic-Solutions/StateStore`. 
 
 **If execution stops for any reason after a tag is pushed, run that task's cleanup step before finishing.** Cleanup is the last step of each task, but it is not optional and it is not only for the success path.
 
-**What cleanup does not remove.** Both workflow runs stay in the repository's Actions tab, and the successful run's `packages` artifact persists for the default 90-day retention. Neither is a release and neither is misleading, so this plan leaves them. Add `gh run delete <run-id>` to the cleanup steps if you want the tab clean.
+**What cleanup does not remove.** Three things, all permanent or long-lived:
+
+1. **The published branch.** Task 4.0 Step 4 pushes `refactor/repo-organization` to the public repository for the first time, and nothing in this plan deletes it. It carries the unrelated restructure design and plan work as well as this workflow. This is the one genuinely irreversible act in the chunk, so it has its own gated step.
+2. **Both workflow runs**, which stay in the repository's Actions tab.
+3. **The successful run's `packages` artifact**, for the default 90-day retention.
+
+Only the tags and releases are cleaned up. Nothing in that list is misleading, so this plan leaves them; add `gh run delete <run-id>` to the cleanup steps if you want the Actions tab clear.
 
 **If the user declines this chunk,** skip to Chunk 5 and use the alternate wording in Task 5.1 Step 1. Do not claim end-to-end verification that did not happen.
 
@@ -851,18 +904,15 @@ git remote -v
 
 Expected: `Active account: true` under `github.com` for an account with push rights to `Cadtastic-Solutions/StateStore`, and `origin` pointing at `https://github.com/Cadtastic-Solutions/StateStore.git`.
 
-- [ ] **Step 2: Confirm immutable releases are not enabled**
+- [ ] **Step 2: Confirm with the user that immutable releases are not enabled**
 
 If the repository or organization enforces immutable releases, a published release cannot be deleted. That would leave the throwaway `v0.0.1-ci.1` release on a public repository permanently, turning this chunk from briefly-public into irreversible. It would also break the re-run path the workflow's create-or-update design depends on.
 
-```bash
-export MSYS_NO_PATHCONV=1
-gh api repos/Cadtastic-Solutions/StateStore --jq '{immutable_releases: .immutable_releases}'
-```
+**This cannot be checked from the API.** `immutable_releases` is not a field on the repository response: `gh api repos/Cadtastic-Solutions/StateStore --jq 'has("immutable_releases")'` returns `false`, and querying it yields `null` whatever the real setting is. A script that tests that field always passes and gives false assurance, so do not write one.
 
-Expected: `false`, or the field absent, which means the setting is not in force.
+Ask the user to confirm the setting is off, under the repository's Settings then General then Releases, and under the organization's equivalent policy page. Record their answer.
 
-If it reports `true`, **stop and tell the user.** Do not proceed with Task 4.1; there is no cleanup path.
+If it is enabled, or if the user cannot confirm either way, **stop and say so.** Do not proceed to Task 4.1: there is no cleanup path for a release that cannot be deleted. Task 4.2 is unaffected, because it never creates a release.
 
 - [ ] **Step 3: Confirm the workflow is in the commit that will be tagged**
 
@@ -907,21 +957,21 @@ If the push is rejected, stop and report why rather than retrying with force.
 
 - [ ] **Step 2: Watch the run**
 
-`gh run watch` takes the run ID as a required positional argument, so capture it first. There is a short registration delay after a tag push, and the list can briefly return an older run, so check that the captured run is for this tag.
+`gh run watch` takes the run ID as a required positional argument, so capture it first. A tag-triggered run carries the tag name in `headBranch`, so filter on that rather than taking the most recent run: there is a short registration delay after a tag push, and an unfiltered `--limit 1` can return an older run.
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
 export MSYS_NO_PATHCONV=1
 REPO=Cadtastic-Solutions/StateStore
-gh run list --repo "$REPO" --limit 3 --json databaseId,headBranch,workflowName,status
-RUN_ID=$(gh run list --repo "$REPO" --limit 1 --json databaseId --jq '.[0].databaseId')
+TAG=v0.0.1-ci.1
+RUN_ID=$(gh run list --repo "$REPO" --branch "$TAG" --limit 1 --json databaseId --jq '.[0].databaseId')
 echo "RUN_ID=$RUN_ID"
 gh run watch "$RUN_ID" --repo "$REPO" --exit-status; echo "exit: $?"
 ```
 
-Expected: the list shows a run with `headBranch` of `v0.0.1-ci.1`, and the watch ends with `exit: 0` after both jobs succeed.
+Expected: `RUN_ID` holds a number, and the watch ends with `exit: 0` after both jobs succeed.
 
-If the list does not yet show the tag's run, wait a few seconds and re-run the two `gh run list` commands. If `RUN_ID` picked up an older run, take the correct `databaseId` from the list output and set it by hand.
+If `RUN_ID` comes back empty, the run has not registered yet. Wait a few seconds and re-run the block. An empty `RUN_ID` makes `gh run watch` fail on a missing argument rather than silently watching the wrong run, which is the point of filtering by tag.
 
 On failure, read the logs and fix the workflow before retrying:
 
@@ -953,11 +1003,12 @@ The step summary is not exposed by the API, so confirm the same facts from the l
 ```bash
 export MSYS_NO_PATHCONV=1
 REPO=Cadtastic-Solutions/StateStore
-RUN_ID=$(gh run list --repo "$REPO" --limit 1 --json databaseId --jq '.[0].databaseId')
+TAG=v0.0.1-ci.1
+RUN_ID=$(gh run list --repo "$REPO" --branch "$TAG" --limit 1 --json databaseId --jq '.[0].databaseId')
 gh run view "$RUN_ID" --repo "$REPO" --log | grep -E "Packing src/|StateStore\.0\.0\.1-ci\.1\.nupkg"
 ```
 
-Expected: at least a line containing `Packing src/StateStore/StateStore.csproj` and a line naming `StateStore.0.0.1-ci.1.nupkg`.
+Expected: at least a line containing `Packing src/StateStore/StateStore.csproj` and a line naming `StateStore.0.0.1-ci.1.nupkg`. The first comes from the Pack step's own echo, the second from the pack output and the Verify step's directory listing.
 
 - [ ] **Step 5: Delete the release and the tag**
 
@@ -987,7 +1038,7 @@ Order matters. The remote delete comes first, then the local delete, then the pr
 
 ### Task 4.2: Negative path with a malformed tag
 
-**Preconditions:** Task 4.0 must have been completed. If you are running this task without Task 4.1, its Steps 1 to 4 still apply.
+**Preconditions:** every step of Task 4.0 must have been completed, including the branch publication, whether or not Task 4.1 was run. Task 4.0 Step 2 is the one exception: this task never creates a release, so the immutable-releases setting does not affect it.
 
 - [ ] **Step 1: Push a tag the glob accepts but the pattern rejects**
 
@@ -1003,11 +1054,14 @@ Expected: `* [new tag]         v0.0.1.1 -> v0.0.1.1`.
 
 - [ ] **Step 2: Confirm the run fails at validation**
 
+Filter by tag again. Without `--branch`, an unfiltered `--limit 1` can return Task 4.1's successful run, and then every assertion below inverts and appears to pass.
+
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
 export MSYS_NO_PATHCONV=1
 REPO=Cadtastic-Solutions/StateStore
-RUN_ID=$(gh run list --repo "$REPO" --limit 1 --json databaseId --jq '.[0].databaseId')
+TAG=v0.0.1.1
+RUN_ID=$(gh run list --repo "$REPO" --branch "$TAG" --limit 1 --json databaseId --jq '.[0].databaseId')
 echo "RUN_ID=$RUN_ID"
 gh run watch "$RUN_ID" --repo "$REPO" --exit-status; echo "watch exit: $? (non-zero is the expected outcome here)"
 gh run view "$RUN_ID" --repo "$REPO" --log-failed | grep -i "not a release tag"
@@ -1015,6 +1069,7 @@ gh run view "$RUN_ID" --repo "$REPO" --json jobs --jq '.jobs[] | {name, conclusi
 ```
 
 Expected:
+- `RUN_ID` holds a number. If it is empty, the run has not registered yet; wait a few seconds and re-run the block.
 - The watch exits non-zero, which is success for this test.
 - The grep prints the error naming the tag and the expected format.
 - The job listing shows `build` with conclusion `failure` and `release` with conclusion `skipped`.
@@ -1074,22 +1129,41 @@ If Chunk 4 was declined or skipped, use instead:
 
 Its preamble reads "To be carried out by the implementation plan," which goes stale the moment the status flips. Replace that line with a note saying the checks were carried out by `docs/superpowers/plans/2026-09-09-release-workflow.md`, and mark any step Chunk 4 did not run as not performed.
 
-- [ ] **Step 3: Verify and commit**
+- [ ] **Step 3: Correct the stale find command in the spec**
+
+The spec's `build` step 9 documents the nested-project check without the three `-not -path` exclusions, so as written it reports a false positive in this very repository. Chunk 2 proved the exclusions are load-bearing.
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+grep -n "mindepth 3" docs/superpowers/specs/2026-09-09-release-workflow-design.md
+```
+
+Update each occurrence to the form Chunk 2 uses:
+
+```
+find src -mindepth 3 -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*/.*/*'
+```
+
+Expected afterwards: every `mindepth 3` line in the spec carries all three exclusions.
+
+- [ ] **Step 4: Verify and commit**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
 grep -n "^\*\*Status:\*\*" docs/superpowers/specs/2026-09-09-release-workflow-design.md
-grep -n "To be carried out by the implementation plan" docs/superpowers/specs/2026-09-09-release-workflow-design.md
+grep -c "To be carried out by the implementation plan" docs/superpowers/specs/2026-09-09-release-workflow-design.md
+grep -c "mindepth 3 -name '\*\.csproj' -not -path '\*/bin/\*' -not -path '\*/obj/\*' -not -path '\*/\.\*/\*'" docs/superpowers/specs/2026-09-09-release-workflow-design.md
 ```
 
-Expected: the status line shows your new wording, and the second grep prints nothing.
+Expected: the status line shows your new wording, the second count is `0`, and the third is at least `1`.
 
 ```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
 git add docs/superpowers/specs/2026-09-09-release-workflow-design.md
 git commit -m "Record release workflow verification results in the spec"
 ```
 
-### Task 5.2: Correct the restructure plan
+### Task 5.2: Correct the restructure plan and its design doc
 
 The pending restructure plan has 165 unexecuted steps and would, as written, reintroduce two failures this workflow depends on not happening. The spec records these under Follow-ups, but whoever executes that plan will not read this spec.
 
@@ -1098,24 +1172,33 @@ A note alone is not enough. `Microsoft.Data.Sqlite` at `10.0.8` appears as copy-
 **Files:**
 - Modify: `docs/superpowers/plans/2026-05-22-repo-restructure.md`
 
-- [ ] **Step 1: Correct the three Sqlite version literals**
+- [ ] **Step 1: Correct the four Sqlite version literals**
 
 Only the `Microsoft.Data.Sqlite` references change. The `Microsoft.Extensions.*` packages at `10.0.8` are unaffected by the advisory and stay as they are.
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
-grep -n 'Microsoft\.Data\.Sqlite.*10\.0\.8' docs/superpowers/plans/2026-05-22-repo-restructure.md
+grep -n 'Microsoft\.Data\.Sqlite 10\.0\.8\|Microsoft\.Data\.Sqlite" Version="10\.0\.8"' docs/superpowers/plans/2026-05-22-repo-restructure.md
 ```
 
-Expected: exactly four lines, at 9 (the Tech Stack summary), 381, 1529, and 1667. Note the version in the pattern: a bare `Microsoft.Data.Sqlite` grep matches eleven lines, and the other seven are prose that needs no change.
+Expected: exactly four lines, at 9 (the Tech Stack summary), 381, 1529, and 1667.
+
+The pattern spells out both spellings on purpose. A looser `Microsoft\.Data\.Sqlite.*10\.0\.8` also matches line 9 after a correct edit, because that line carries a second, unrelated `10.0.8` for `Microsoft.Extensions.DependencyInjection.Abstractions` and `.*` reaches it. A bare `Microsoft.Data.Sqlite` grep matches eleven lines, seven of which are prose needing no change.
 
 Edit each of those four to read `10.0.12` instead of `10.0.8`, then confirm:
 
 ```bash
-grep -n 'Microsoft\.Data\.Sqlite.*10\.0\.\(8\|12\)' docs/superpowers/plans/2026-05-22-repo-restructure.md
+cd /c/Users/AddamBoord/source/repos/StateStore
+echo "stale: $(grep -c 'Microsoft\.Data\.Sqlite 10\.0\.8\|Microsoft\.Data\.Sqlite" Version="10\.0\.8"' docs/superpowers/plans/2026-05-22-repo-restructure.md)"
+echo "fixed: $(grep -c 'Microsoft\.Data\.Sqlite.*10\.0\.12' docs/superpowers/plans/2026-05-22-repo-restructure.md)"
 ```
 
-Expected: the same four line numbers, now all showing `10.0.12`, and none showing `10.0.8`.
+Expected exactly:
+
+```
+stale: 0
+fixed: 4
+```
 
 - [ ] **Step 2: Insert the warning note**
 
@@ -1135,23 +1218,48 @@ The header block ends with the `**Spec:**` line at line 11, followed by a blank 
 > spec lists CI as a non-goal; that is superseded by the release workflow spec above.
 ```
 
-- [ ] **Step 3: Verify and commit**
+- [ ] **Step 3: Correct the same literal in the restructure design doc**
+
+The spec's Follow-up names the design doc, and its line 199 still specifies `Microsoft.Data.Sqlite 10.0.8` for the future `StateStore.Sqlite.csproj`. Fixing only the plan would leave the two documents contradicting each other.
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+grep -n 'Microsoft\.Data\.Sqlite 10\.0\.8' docs/superpowers/specs/2026-05-22-repo-restructure-design.md
+```
+
+Expected: exactly one line, 199.
+
+Change it to `10.0.12`, then confirm:
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+echo "stale: $(grep -c 'Microsoft\.Data\.Sqlite 10\.0\.8' docs/superpowers/specs/2026-05-22-repo-restructure-design.md)"
+echo "fixed: $(grep -c 'Microsoft\.Data\.Sqlite 10\.0\.12' docs/superpowers/specs/2026-05-22-repo-restructure-design.md)"
+```
+
+Expected: `stale: 0` and `fixed: 1`.
+
+- [ ] **Step 4: Verify the note landed and commit both files**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
 sed -n '9,28p' docs/superpowers/plans/2026-05-22-repo-restructure.md
-grep -c '10\.0\.8' docs/superpowers/plans/2026-05-22-repo-restructure.md
 ```
 
-Expected: the note appears after the `**Spec:**` line and before the `---`, and the `10.0.8` count has dropped from 11 to 7. The seven that remain are `Microsoft.Extensions.*` references, which the advisory does not affect and which stay as they are.
+Expected: the note appears after the `**Spec:**` line and before the `---` rule, with the File map heading below it.
 
 ```bash
-git add docs/superpowers/plans/2026-05-22-repo-restructure.md
-git commit -m "Correct Sqlite version and flag IsPackable trap in restructure plan
+cd /c/Users/AddamBoord/source/repos/StateStore
+git add docs/superpowers/plans/2026-05-22-repo-restructure.md docs/superpowers/specs/2026-05-22-repo-restructure-design.md
+git commit -m "Correct Sqlite version and flag IsPackable trap in restructure work
 
-Executing it as written would reintroduce NU1903 and add NU5039, both
-of which break the release workflow's build step."
+Executing that plan as written would reintroduce NU1903 and add NU5039,
+both of which break the release workflow's build step."
 ```
+
+Expected: `2 files changed`.
+
+Do not count total `10.0.8` occurrences as a check. That number drops from 11 lines to 8, not to 7, because line 9 carries two occurrences and only one of them changes. The per-pattern counts in Steps 1 and 3 are the reliable assertions.
 
 ### Task 5.3: Mark this plan complete
 
@@ -1207,11 +1315,13 @@ Invoke @superpowers:finishing-a-development-branch to choose between merging, op
 
 Do not merge to `master` without asking. This branch also carries the unrelated restructure design and plan work.
 
+One constraint to raise when presenting the options: the repository has an active ruleset named `enforced-reviews` targeting the default branch, requiring a pull request with review and forbidding deletion and non-fast-forward pushes. A direct push to `master` is therefore not available, and a reviewed pull request is the only merge path. The ruleset targets branches, not tags, and only the default branch, so it does not affect anything in Chunk 4.
+
 ---
 
 ## Verification summary
 
-The plan is complete when all of these hold. Rows 5 to 7 depend on Chunk 4 and do not apply if it was declined.
+The plan is complete when all of these hold. The three rows marked gated depend on Chunk 4 and do not apply if it was declined.
 
 | # | Check | How | Gated |
 |---|---|---|---|
@@ -1222,6 +1332,6 @@ The plan is complete when all of these hold. Rows 5 to 7 depend on Chunk 4 and d
 | 5 | A command-line version overrides the csproj value | The local probe produced `StateStore.0.0.1-probe.nupkg` | No |
 | 6 | Every packable project is reachable by the glob | `find src -mindepth 3 -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*/.*/*'` prints nothing | No |
 | 7 | `build` cannot write to the repository | `permissions: contents: read` on `build`, `write` only on `release` | No |
-| 8 | A valid tag yields a release with the versioned package attached | `gh release view v0.0.1-ci.1` showed a pre-release with `StateStore.0.0.1-ci.1.nupkg` | Yes |
-| 9 | An invalid tag fails fast and releases nothing | `build` failed at its first step, `release` was skipped, `gh release view v0.0.1.1` reported not found | Yes |
+| 8 | A valid tag yields a release with the versioned package attached | `gh release view v0.0.1-ci.1` reports a pre-release with `StateStore.0.0.1-ci.1.nupkg` attached | Yes |
+| 9 | An invalid tag fails fast and releases nothing | `build` fails at its first step, `release` is skipped, and `gh release view v0.0.1.1` reports not found | Yes |
 | 10 | No test tags or releases remain | `git tag -l` and `git ls-remote --tags origin` both print nothing | Yes |
