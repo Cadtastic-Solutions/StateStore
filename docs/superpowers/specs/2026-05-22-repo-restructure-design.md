@@ -17,7 +17,7 @@ Reorganize the StateStore repository to follow standard .NET library conventions
 
 ## Non-goals (explicitly out of scope)
 
-- GitHub Actions CI workflows. `.github/workflows/` is empty and will stay that way.
+- GitHub Actions CI workflows. ~~`.github/workflows/` is empty and will stay that way.~~ **Superseded on 2026-09-09.** `.github/workflows/release.yml` now exists and publishes a GitHub Release on a release tag; see `docs/superpowers/specs/2026-09-09-release-workflow-design.md`. A pull-request CI workflow remains out of scope for both documents.
 - `CONTRIBUTING.md`, `CHANGELOG.md`, `CODE_OF_CONDUCT.md`. The repo is not actively soliciting outside contributions.
 - SLNX (XML solution file) migration. Mature .NET 9 feature but adds churn with no benefit at this scale.
 - Stricter analyzers (`AnalysisLevel`, `EnableNETAnalyzers`, etc.). Would flood the build with warnings to triage; better as a separate effort.
@@ -351,7 +351,9 @@ The `Exclude=` is **load-bearing** here: with the recursive `**` include, anythi
 
 ## Benchmarks project
 
-`tests/StateStore.Benchmarks/StateStore.Benchmarks.csproj` is **unchanged structurally** — it stays at its current path, keeps multi-targeting net8/9/10, keeps referencing `src/StateStore/StateStore.csproj`. It inherits the new `Directory.Build.props` automatically, but because `OutputType=Exe` makes it non-packable by default, the SourceLink and `PACKAGE.md` injection in the shared props are guarded by `<IsPackable>` and won't apply. Benchmark sources don't reference Mongo, Sqlite, or `StorageProviderKind`, so no code changes needed.
+`tests/StateStore.Benchmarks/StateStore.Benchmarks.csproj` is **unchanged structurally** — it stays at its current path, keeps multi-targeting net8/9/10, keeps referencing `src/StateStore/StateStore.csproj`. It inherits the new `Directory.Build.props` automatically. Benchmark sources don't reference Mongo, Sqlite, or `StorageProviderKind`, so no code changes needed.
+
+**Correction, 2026-09-09.** This section previously claimed that `OutputType=Exe` makes the project non-packable by default, so the `PACKAGE.md` injection in the shared props would be guarded by `<IsPackable>` and would not apply. That is false, verified with `dotnet msbuild -getProperty:IsPackable -p:Configuration=Release`, which reports `true` for this project. `StateStore.Tests` is `false` only because its csproj sets the property explicitly. The `IsPackable != 'false'` guard does not help either, because `Directory.Build.props` is imported before the project body, so the condition evaluates against an empty value and is always true. **This project must therefore set `<IsPackable>false</IsPackable>` explicitly**, or the Release build fails with `NU5039` for a missing `PACKAGE.md` and every release-tag run turns red. The same applies to each `samples/` project.
 
 Verification step: the post-refactor `dotnet pack -c Release` must NOT emit a `StateStore.Benchmarks.nupkg`.
 
@@ -562,7 +564,7 @@ The plan must produce a final state where:
 
 ## Out-of-scope follow-ups (capture for later)
 
-- Wire up GitHub Actions CI to run the verification steps above on every PR and publish packages on tag.
+- ~~Wire up GitHub Actions CI to run the verification steps above on every PR and publish packages on tag.~~ The publish-on-tag half is **done**: `.github/workflows/release.yml`, specified in `docs/superpowers/specs/2026-09-09-release-workflow-design.md` and verified end-to-end on 2026-09-09. Running the verification steps on every pull request is still open.
 - Add `CONTRIBUTING.md` and `CHANGELOG.md` if the project starts taking outside contributions.
 - Strict analyzers pass once the structural churn settles.
 - Strong-name signing if/when a corporate consumer requires it.
