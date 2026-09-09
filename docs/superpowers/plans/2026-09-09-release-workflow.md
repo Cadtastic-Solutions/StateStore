@@ -39,8 +39,9 @@ One block deliberately does not `cd` to the repository: Task 2.2 Step 4 runs ins
 
 | Fact | Evidence |
 |---|---|
-| The complete workflow this plan produces is 237 lines and passes actionlint 1.7.12 with shellcheck 0.11.0 active, zero findings | Assembled and linted during planning, re-measured after each review amendment |
+| The complete workflow this plan produces is 248 lines and passes actionlint 1.7.12 with shellcheck 0.11.0 active, zero findings | Assembled and linted during planning, re-measured after each review amendment |
 | The version step handles all 18 tag cases correctly, both accept and reject, including `prerelease=false` | Harness in Task 1.1 run against the assembled file |
+| The release job takes the right branch, and refuses a draft or a pre-release flag mismatch, across all 10 cases | Harness in Task 3.3 run against the assembled file with a fake `gh`; four mutations each caught |
 | The Verify packages step behaves correctly across six cases including version mismatch, nested projects, and a project that produced no package | Task 2.2 Step 4 run against a synthetic tree |
 | `dotnet pack --no-build` works despite `GeneratePackageOnBuild=true` for Release | Local probe produced `StateStore.0.0.1-probe.nupkg` |
 | A command-line `-p:Version=` overrides the csproj's `1.0.0` and flows into `AssemblyVersion` | Same probe |
@@ -55,7 +56,7 @@ One block deliberately does not `cd` to the repository: Task 2.2 Step 4 runs ins
 
 | File | Responsibility | Status |
 |---|---|---|
-| `.github/workflows/release.yml` | The entire deliverable. Tag validation, version derivation, build, test, pack, artifact upload, release creation. 237 lines when complete. | Create (Chunks 1 to 3) |
+| `.github/workflows/release.yml` | The entire deliverable. Tag validation, version derivation, build, test, pack, artifact upload, release creation. 248 lines when complete. | Create (Chunks 1 to 3) |
 | `docs/superpowers/specs/2026-09-09-release-workflow-design.md` | The spec for this work. Its status line, Verification section, and one stale command are updated once the workflow is proven. | Modify (Task 5.1) |
 | `docs/superpowers/plans/2026-05-22-repo-restructure.md` | Unrelated pending plan. Gains a warning note plus four corrected version literals. | Modify (Task 5.2) |
 | `docs/superpowers/specs/2026-05-22-repo-restructure-design.md` | That plan's spec. One stale version literal corrected. | Modify (Task 5.2) |
@@ -472,7 +473,7 @@ This was verified during planning, so actionlint should accept `hashFiles` in a 
 
 then change the two setup conditions to `steps.sdkpin.outputs.pinned == 'true'` and `== 'false'`.
 
-Taking that fallback changes two later expectations, and both are stated as checksums, so note them now: Task 2.3 Step 1's step list becomes twelve names with `Detect global.json` third, and Chunk 3 Step 1's `wc -l` reports 247 rather than 237. Neither is then a transcription error.
+Taking that fallback changes two later expectations, and both are stated as checksums, so note them now: Task 2.3 Step 1's step list becomes twelve names with `Detect global.json` third, and Chunk 3 Step 1's `wc -l` reports 258 rather than 248. Neither is then a transcription error.
 
 - [x] **Step 3: Commit**
 
@@ -854,7 +855,7 @@ nested too deep for the glob rather than dropping it silently."
 wc -l .github/workflows/release.yml
 ```
 
-Expected: `1 file changed, 96 insertions(+)` and `173 .github/workflows/release.yml`. Chunk 3 adds the remaining 64 lines to reach the 237-line checksum.
+Expected: `1 file changed, 96 insertions(+)` and `173 .github/workflows/release.yml`. Chunk 3 adds the remaining 75 lines to reach the 248-line checksum.
 
 ### Task 2.4: Apply the Chunk 2 quality-review amendments
 
@@ -967,15 +968,26 @@ cat >> .github/workflows/release.yml <<'YML'
             echo "::error::No package assets to attach to release $TAG."
             exit 1
           fi
-          # The existence probe doubles as a draft check. gh release create works in
-          # three API calls (create as draft, upload assets, publish), so a failure
-          # partway through leaves a draft, and a plain retry would attach assets to
-          # it and exit 0 with nothing published.
-          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
+          # The existence probe doubles as a draft and pre-release check. gh release
+          # create works in three API calls (create as draft, upload assets, publish),
+          # so a failure partway through leaves a draft, and a plain retry would attach
+          # assets to it and exit 0 with nothing published.
+          if existing="$(gh release view "$TAG" --json isDraft,isPrerelease --jq '.isDraft, .isPrerelease' 2>/dev/null)"; then
+            # Two lines, one per field. Anything but two makes both variables the whole
+            # string, which fails the flag comparison below rather than mispublishing.
+            draft="${existing%%$'\n'*}"
+            existing_prerelease="${existing##*$'\n'}"
             echo "Release $TAG already exists. Uploading assets."
             gh release upload "$TAG" --clobber "${assets[@]}"
             if [[ "$draft" == "true" ]]; then
               echo "::error::Release $TAG exists as a draft. Assets are attached but nothing is published. Publish it, or delete the draft and re-run."
+              exit 1
+            fi
+            # The update path changes nothing but assets, so a wrong pre-release flag is
+            # an error rather than a correction. Left unchecked, a release hand-created
+            # as stable for a -rc tag stands as the repository's latest stable release.
+            if [[ "$existing_prerelease" != "$PRERELEASE" ]]; then
+              echo "::error::Release $TAG is marked isPrerelease=$existing_prerelease but its version requires prerelease=$PRERELEASE. Assets are attached. Correct the flag on the release, or delete the release and re-run."
               exit 1
             fi
           else
@@ -1000,9 +1012,9 @@ YML
 wc -l .github/workflows/release.yml
 ```
 
-Expected: `237 .github/workflows/release.yml`. This number is the whole-file checksum for this plan: a different count means a transcription error somewhere in Chunks 1 to 3, not a design problem.
+Expected: `248 .github/workflows/release.yml`. This number is the whole-file checksum for this plan: a different count means a transcription error somewhere in Chunks 1 to 3, not a design problem.
 
-Three details in this job are load-bearing and easy to undo by accident. The probe captures `isDraft` rather than discarding output, because `gh release create` is three API calls and a failure partway leaves a draft that a plain retry would silently accept. `--verify-tag` stops `gh` from creating a missing tag at the default branch HEAD and publishing a release whose contents disagree with it. And `GH_TOKEN` sits on the step rather than the job, so the only write credential in the workflow is not in the artifact download step's environment.
+Four details in this job are load-bearing and easy to undo by accident. The probe captures `isDraft` rather than discarding output, because `gh release create` is three API calls and a failure partway leaves a draft that a plain retry would silently accept. It captures `isPrerelease` in the same call and compares it against `$PRERELEASE`, because the update path otherwise accepts a release whose pre-release flag contradicts the tag it names. `--verify-tag` stops `gh` from creating a missing tag at the default branch HEAD and publishing a release whose contents disagree with it. And `GH_TOKEN` sits on the step rather than the job, so the only write credential in the workflow is not in the artifact download step's environment.
 
 - [x] **Step 2: Lint**
 
@@ -1063,7 +1075,7 @@ run can be retried. Marks a hyphenated version as a pre-release."
 wc -l .github/workflows/release.yml
 ```
 
-Expected: `1 file changed, 64 insertions(+)` and `237 .github/workflows/release.yml`.
+Expected: `1 file changed, 75 insertions(+)` and `248 .github/workflows/release.yml`.
 
 ### Task 3.2: Apply the Chunk 3 quality-review amendments
 
@@ -1086,7 +1098,7 @@ Expected: `173 .github/workflows/release.yml`.
 
 - [x] **Step 2: Re-run Task 3.1 Step 1**
 
-Expected: `237 .github/workflows/release.yml`.
+Expected: `248 .github/workflows/release.yml`.
 
 - [x] **Step 3: Re-run Task 3.1 Steps 2 to 4**
 
@@ -1101,7 +1113,7 @@ git diff --cached --stat
 git diff --cached | grep '^-' | grep -v '^---'
 ```
 
-Expected: `1 file changed, 23 insertions(+), 5 deletions(-)`, and these five removed lines exactly:
+Expected: `1 file changed, 34 insertions(+), 5 deletions(-)`, and these five removed lines exactly:
 
 ```
 -      GH_TOKEN: ${{ github.token }}
@@ -1111,7 +1123,7 @@ Expected: `1 file changed, 23 insertions(+), 5 deletions(-)`, and these five rem
 -            gh release create "$TAG" "${assets[@]}" "${args[@]}"
 ```
 
-The two env lines move to the step, and the three `gh` lines are replaced by their reordered forms. Everything added is the step-level `env` block, the draft probe with its four-line comment, the draft failure branch, the three-line `--verify-tag` comment, and the six-line step-summary block. Anything else is a transcription error.
+The two env lines move to the step, and the three `gh` lines are replaced by their reordered forms. Everything added is the step-level `env` block, the draft-and-pre-release probe with its four-line comment and two-line split, the draft failure branch, the pre-release mismatch branch with its three-line comment, the three-line `--verify-tag` comment, and the six-line step-summary block. The count covers Task 3.3 as well, because that guard is folded into the Task 3.1 heredoc, so a checkout at `4d0a345` picks up both review rounds in one edit. Anything else is a transcription error.
 
 - [x] **Step 5: Commit**
 
@@ -1127,6 +1139,265 @@ published. The probe now captures isDraft and fails loudly.
 Also confine the write token to the step that calls gh, put flags
 before positional asset paths, record the release URL in the run
 summary, and comment why --verify-tag is not optional."
+```
+
+---
+
+### Task 3.3: Close the pre-release flag gap on the update path
+
+**Files:**
+- Modify: `.github/workflows/release.yml`
+- Create: `$SCRATCH/test-release-step.sh` (scratchpad, not committed)
+
+**Why this task exists.** After Task 3.2 the update path still never looked at the existing release's pre-release flag. Hand-create a published release in the GitHub UI for a tag like `v1.0.0-rc.1` without ticking pre-release, push that tag, and the workflow attached the packages and exited 0, leaving an `-rc` build standing as the repository's latest stable release with nothing red in the run. The create path had guarded this from the start by passing `--prerelease`, and the job already refused to run unless `$PRERELEASE` was exactly `true` or `false`, so only the update path was exposed. This is the same silent-success class as the empty `PRERELEASE`, the `IsPackable=false` omission, and the accepted draft. The fix rides on machinery already present: the probe already fetched JSON, so it now fetches `isDraft,isPrerelease` and compares the second field against `$PRERELEASE`. It fails rather than correcting the flag, which keeps the documented contract that the update path changes nothing but assets. Folded into the Task 3.1 heredoc above, so a fresh executor gets the final form and this task is a no-op for them.
+
+- [x] **Step 1: Write the release-step harness**
+
+This script extracts the `run:` block of the `Create or update release` step out of the workflow and executes it against a fake `gh` on `PATH` that logs its arguments and answers from `FAKE_*` variables. Extracting the shipped step rather than restating its logic is the same discipline as Task 1.1: a harness holding its own copy could pass while the workflow was broken.
+
+The fake `gh` emulates exactly one `--jq` filter and exits 90 if the workflow ever passes a different one, so the fake cannot silently guess at a changed probe. It renders each field on its own line, which is the same scalar rendering the shipped `--jq .isDraft` and `--jq .url` calls already proved end-to-end in Chunk 4. Nothing in this harness reaches the network, and no real `gh` or `git` command runs, so no tag can reach the public repository from it.
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+export SCRATCH="/c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan"
+mkdir -p "$SCRATCH"
+
+cat > "$SCRATCH/test-release-step.sh" <<'SH'
+#!/usr/bin/env bash
+# Executes the real "Create or update release" step out of the shipped workflow
+# against a fake gh that logs its arguments, asserting exit status, which gh
+# subcommands ran, and which ::error:: was emitted. Extracting the step rather
+# than restating it means this test cannot pass while the workflow is broken.
+set -uo pipefail
+
+WORKFLOW="${1:-.github/workflows/release.yml}"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+if [[ ! -f "$WORKFLOW" ]]; then
+  echo "FAIL: $WORKFLOW does not exist"
+  exit 1
+fi
+
+# Capture the run: block belonging to the "Create or update release" step.
+STEP="$WORK/release-step.sh"
+awk '
+  /^      - name: Create or update release$/ { found=1; next }
+  found && /^        run: \|$/ { capture=1; found=0; next }
+  capture {
+    if ($0 ~ /^          / || $0 ~ /^[[:space:]]*$/) { sub(/^          /, ""); print; next }
+    capture=0
+  }
+' "$WORKFLOW" > "$STEP"
+
+for needle in 'gh release view' 'gh release upload' 'gh release create' 'isPrerelease'; do
+  if ! grep -qF "$needle" "$STEP"; then
+    echo "FAIL: extraction from $WORKFLOW did not yield the release step"
+    echo "      (no '$needle' in the captured script)"
+    exit 1
+  fi
+done
+
+# A fake gh on PATH. Logs every invocation and answers from FAKE_* variables.
+mkdir -p "$WORK/bin"
+cat > "$WORK/bin/gh" <<'FAKEGH'
+#!/usr/bin/env bash
+printf 'gh %s\n' "$*" >> "$GH_LOG"
+if [[ "${1:-}" == "release" && "${2:-}" == "view" ]]; then
+  if [[ "$*" == *"--json isDraft,isPrerelease"* ]]; then
+    # Keep the fake honest: it emulates exactly one --jq filter. If the workflow
+    # changes the filter, fail loudly instead of silently passing.
+    if [[ "$*" != *"--jq .isDraft, .isPrerelease"* ]]; then
+      echo "fake gh: unexpected probe filter: $*" >&2
+      exit 90
+    fi
+    if [[ "${FAKE_EXISTS:-0}" != "1" ]]; then
+      echo "release not found" >&2
+      exit 1
+    fi
+    # gh --jq renders each scalar on its own line, as the shipped --jq .isDraft does.
+    printf '%s\n%s\n' "$FAKE_ISDRAFT" "$FAKE_ISPRERELEASE"
+    exit 0
+  fi
+  if [[ "$*" == *"--json url"* ]]; then
+    echo "https://example.invalid/releases/${3:-unknown}"
+    exit 0
+  fi
+  echo "fake gh: unhandled release view: $*" >&2
+  exit 91
+fi
+if [[ "${1:-}" == "release" && ( "${2:-}" == "upload" || "${2:-}" == "create" ) ]]; then
+  exit 0
+fi
+echo "fake gh: unhandled command: $*" >&2
+exit 92
+FAKEGH
+chmod +x "$WORK/bin/gh"
+
+failures=0
+caseno=0
+
+# run_case <label> <PRERELEASE> <exists> <isDraft> <isPrerelease> <assets:yes|no>
+#          <want_rc> <must-match...> -- <must-not-match...>
+run_case() {
+  local label="$1" prerelease="$2" exists="$3" isdraft="$4" ispre="$5" assets="$6" want_rc="$7"
+  shift 7
+  local want=() nope=() seen_sep=0
+  local a
+  for a in "$@"; do
+    if [[ "$a" == "--" ]]; then seen_sep=1; continue; fi
+    if [[ $seen_sep -eq 0 ]]; then want+=("$a"); else nope+=("$a"); fi
+  done
+
+  caseno=$((caseno + 1))
+  local dir="$WORK/case$caseno"
+  mkdir -p "$dir/artifacts/packages"
+  if [[ "$assets" == "yes" ]]; then
+    : > "$dir/artifacts/packages/StateStore.1.0.0-rc.1.nupkg"
+    : > "$dir/artifacts/packages/StateStore.1.0.0-rc.1.snupkg"
+  fi
+  : > "$dir/gh.log"
+  : > "$dir/summary.md"
+
+  local rc out
+  out="$(
+    cd "$dir" || exit 99
+    PATH="$WORK/bin:$PATH" \
+    GH_LOG="$dir/gh.log" \
+    GH_TOKEN=fake GH_REPO=owner/repo \
+    TAG=v1.0.0-rc.1 \
+    PRERELEASE="$prerelease" \
+    FAKE_EXISTS="$exists" FAKE_ISDRAFT="$isdraft" FAKE_ISPRERELEASE="$ispre" \
+    GITHUB_STEP_SUMMARY="$dir/summary.md" \
+      bash "$STEP" 2>&1
+  )"
+  rc=$?
+
+  local combined="$out"$'\n'"$(cat "$dir/gh.log")"
+  local problems=()
+  [[ $rc -eq $want_rc ]] || problems+=("exit=$rc want=$want_rc")
+  for a in "${want[@]}"; do
+    grep -qF -- "$a" <<< "$combined" || problems+=("missing: $a")
+  done
+  for a in "${nope[@]-}"; do
+    [[ -z "$a" ]] && continue
+    grep -qF -- "$a" <<< "$combined" && problems+=("unexpected: $a")
+  done
+
+  if [[ ${#problems[@]} -eq 0 ]]; then
+    printf '  ok       %-46s exit=%s\n' "$label" "$rc"
+  else
+    printf '  NOT OK   %-46s exit=%s\n' "$label" "$rc"
+    printf '             - %s\n' "${problems[@]}"
+    printf '             --- output ---\n'
+    sed 's/^/             /' <<< "$combined"
+    failures=$((failures + 1))
+  fi
+}
+
+echo "Extracted $(wc -l < "$STEP") lines of the 'Create or update release' step from $WORKFLOW"
+echo
+
+#         label                                       PRE     ex dr pre  assets rc
+run_case "existing published, flag matches (rc)"       true    1  false true  yes 0 \
+  "gh release upload v1.0.0-rc.1 --clobber" \
+  -- "gh release create" "::error::"
+
+run_case "existing published, flag matches (stable)"   false   1  false false yes 0 \
+  "gh release upload v1.0.0-rc.1 --clobber" \
+  -- "gh release create" "::error::"
+
+run_case "existing published stable, tag is a -rc"     true    1  false false yes 1 \
+  "gh release upload v1.0.0-rc.1 --clobber" \
+  "::error::Release v1.0.0-rc.1 is marked isPrerelease=false but its version requires prerelease=true" \
+  -- "gh release create"
+
+run_case "existing published pre-release, tag stable"  false   1  false true  yes 1 \
+  "gh release upload v1.0.0-rc.1 --clobber" \
+  "::error::Release v1.0.0-rc.1 is marked isPrerelease=true but its version requires prerelease=false" \
+  -- "gh release create"
+
+run_case "existing draft, flag matches"                true    1  true  true  yes 1 \
+  "gh release upload v1.0.0-rc.1 --clobber" \
+  "::error::Release v1.0.0-rc.1 exists as a draft" \
+  -- "gh release create" "isPrerelease="
+
+run_case "existing draft, flag also wrong"             true    1  true  false yes 1 \
+  "gh release upload v1.0.0-rc.1 --clobber" \
+  "::error::Release v1.0.0-rc.1 exists as a draft" \
+  -- "gh release create" "isPrerelease="
+
+run_case "create path, pre-release"                    true    0  x     x     yes 0 \
+  "gh release create v1.0.0-rc.1 --title v1.0.0-rc.1 --generate-notes --verify-tag --prerelease" \
+  -- "gh release upload" "::error::"
+
+run_case "create path, stable"                         false   0  x     x     yes 0 \
+  "gh release create v1.0.0-rc.1 --title v1.0.0-rc.1 --generate-notes --verify-tag artifacts" \
+  -- "gh release upload" "::error::" "--prerelease"
+
+run_case "stale build output (empty PRERELEASE)"       ""      1  false false yes 1 \
+  "::error::prerelease flag from the build job is ''" \
+  -- "gh release view" "gh release upload" "gh release create"
+
+run_case "no package assets"                           true    1  false true  no  1 \
+  "::error::No package assets to attach to release v1.0.0-rc.1" \
+  -- "gh release view" "gh release upload" "gh release create"
+
+echo
+if [[ $failures -gt 0 ]]; then
+  echo "FAIL: $failures case(s) behaved incorrectly"
+  exit 1
+fi
+echo "PASS: all $caseno cases behaved as specified"
+SH
+
+chmod +x "$SCRATCH/test-release-step.sh"
+```
+
+- [x] **Step 2: Run the harness**
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+export SCRATCH="/c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan"
+bash "$SCRATCH/test-release-step.sh" .github/workflows/release.yml
+```
+
+Expected: ten lines each beginning `  ok`, then `PASS: all 10 cases behaved as specified`, and exit 0. The ten cases are an existing published release whose flag matches in both directions, an existing published release whose flag is wrong in both directions, an existing draft with a matching and with a wrong flag, the create path with and without `--prerelease`, a stale empty `PRERELEASE`, and an empty asset set.
+
+Two orderings are asserted deliberately. A draft reports the draft error and never reaches the flag comparison, so a draft carrying a wrong flag surfaces the draft first and the flag on the re-run after it is published. And the two guards that precede the probe, the `PRERELEASE` validity check and the empty-asset check, are asserted to fail before any `gh` call happens at all.
+
+- [x] **Step 3: Confirm the harness discriminates**
+
+Four mutations of the workflow were each run through the harness. Deleting the flag-mismatch branch turned the two mismatch cases red with `exit=0` and the assets attached, reproducing the reported defect exactly. Inverting the comparison to `==` turned four cases red. Changing the probe filter to `[.isDraft, .isPrerelease] | @tsv` tripped the fake at exit 90, dropping every update case through to the create path, which incidentally confirms the failure direction if the real `gh` ever errored on the filter: a red run from the API `already_exists`, never a mispublish. And the pre-fix committed workflow failed the extraction guard outright. No mutation passed.
+
+- [x] **Step 4: Lint with shellcheck active**
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+export SHELLCHECK_DIR="/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/koalaman.shellcheck_Microsoft.Winget.Source_8wekyb3d8bbwe"
+export ACTIONLINT="/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/rhysd.actionlint_Microsoft.Winget.Source_8wekyb3d8bbwe/actionlint"
+PATH="$SHELLCHECK_DIR:$PATH" "$ACTIONLINT" -verbose .github/workflows/release.yml
+wc -l .github/workflows/release.yml
+```
+
+Expected: `Found total 0 errors`, exit 0, and `248 .github/workflows/release.yml`. Read the `-verbose` output rather than trusting the exit status: actionlint disables its shellcheck rule and still exits 0 when the binary is absent. Only `Rule "pyflakes" was disabled` should appear, which is irrelevant here because no step in this workflow runs Python. A line naming `shellcheck` as disabled means the lint was hollow.
+
+- [x] **Step 5: Commit**
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+git add .github/workflows/release.yml
+git commit -m "Fail the release update path on a pre-release flag mismatch
+
+The update path attached assets and exited 0 without ever checking the
+existing release pre-release flag. A published release hand-created for
+a -rc tag therefore stood as the latest stable release with nothing red
+in the run.
+
+The existence probe already fetched JSON, so it now fetches
+isDraft,isPrerelease and fails with an ::error:: naming the mismatch.
+Failing rather than correcting the flag keeps the documented contract
+that the update path changes nothing but assets."
 ```
 
 ---
@@ -1586,17 +1857,18 @@ One constraint to raise when presenting the options: the repository has an activ
 
 ## Verification summary
 
-The plan is complete when all of these hold. The three rows marked gated depend on Chunk 4 and do not apply if it was declined.
+The plan is complete when all of these hold. The three rows marked gated depend on Chunk 4 and do not apply if it was declined. Row 2 is not gated and needs no tag: the release job is exercised locally against a fake `gh`.
 
 | # | Check | How | Gated |
 |---|---|---|---|
 | 1 | The version step accepts and rejects exactly as specified, and derives the right version and pre-release flag | `bash "$SCRATCH/test-version-step.sh"` prints PASS for all 18 cases | No |
-| 2 | The workflow is valid and shellcheck-clean | actionlint exits 0 with no output | No |
-| 3 | The assembled file matches this plan | `wc -l .github/workflows/release.yml` reports 237, or 247 if Task 2.1's `hashFiles` fallback was taken | No |
-| 4 | The verify logic catches mismatched versions, missing packages, nested projects, and a project that produced no package | Task 2.2 Step 4's six cases behave as tabulated | No |
-| 5 | A command-line version overrides the csproj value | The local probe produced `StateStore.0.0.1-probe.nupkg` | No |
-| 6 | Every packable project is reachable by the glob | `find src -mindepth 3 -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*/.*/*'` prints nothing | No |
-| 7 | `build` cannot write to the repository | `permissions: contents: read` on `build`, `write` only on `release` | No |
-| 8 | A valid tag yields a release with the versioned package attached | `gh release view v0.0.1-ci.1` reports a pre-release with `StateStore.0.0.1-ci.1.nupkg` attached | Yes |
-| 9 | An invalid tag fails fast and releases nothing | `build` fails at its first step, `release` is skipped, and `gh release view v0.0.1.1` reports not found | Yes |
-| 10 | No test tags or releases remain | `git tag -l` and `git ls-remote --tags origin` both print nothing | Yes |
+| 2 | The release job creates, updates, and refuses exactly as specified, including a pre-release flag mismatch on the update path | `bash "$SCRATCH/test-release-step.sh" .github/workflows/release.yml` prints PASS for all 10 cases | No |
+| 3 | The workflow is valid and shellcheck-clean | actionlint `-verbose` reports 0 errors and does not name shellcheck as a disabled rule | No |
+| 4 | The assembled file matches this plan | `wc -l .github/workflows/release.yml` reports 248, or 258 if Task 2.1's `hashFiles` fallback was taken | No |
+| 5 | The verify logic catches mismatched versions, missing packages, nested projects, and a project that produced no package | Task 2.2 Step 4's six cases behave as tabulated | No |
+| 6 | A command-line version overrides the csproj value | The local probe produced `StateStore.0.0.1-probe.nupkg` | No |
+| 7 | Every packable project is reachable by the glob | `find src -mindepth 3 -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*/.*/*'` prints nothing | No |
+| 8 | `build` cannot write to the repository | `permissions: contents: read` on `build`, `write` only on `release` | No |
+| 9 | A valid tag yields a release with the versioned package attached | `gh release view v0.0.1-ci.1` reports a pre-release with `StateStore.0.0.1-ci.1.nupkg` attached | Yes |
+| 10 | An invalid tag fails fast and releases nothing | `build` fails at its first step, `release` is skipped, and `gh release view v0.0.1.1` reports not found | Yes |
+| 11 | No test tags or releases remain | `git tag -l` and `git ls-remote --tags origin` both print nothing | Yes |
