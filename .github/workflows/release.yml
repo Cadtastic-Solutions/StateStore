@@ -207,15 +207,26 @@ jobs:
             echo "::error::No package assets to attach to release $TAG."
             exit 1
           fi
-          # The existence probe doubles as a draft check. gh release create works in
-          # three API calls (create as draft, upload assets, publish), so a failure
-          # partway through leaves a draft, and a plain retry would attach assets to
-          # it and exit 0 with nothing published.
-          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
+          # The existence probe doubles as a draft and pre-release check. gh release
+          # create works in three API calls (create as draft, upload assets, publish),
+          # so a failure partway through leaves a draft, and a plain retry would attach
+          # assets to it and exit 0 with nothing published.
+          if existing="$(gh release view "$TAG" --json isDraft,isPrerelease --jq '.isDraft, .isPrerelease' 2>/dev/null)"; then
+            # Two lines, one per field. Anything but two makes both variables the whole
+            # string, which fails the flag comparison below rather than mispublishing.
+            draft="${existing%%$'\n'*}"
+            existing_prerelease="${existing##*$'\n'}"
             echo "Release $TAG already exists. Uploading assets."
             gh release upload "$TAG" --clobber "${assets[@]}"
             if [[ "$draft" == "true" ]]; then
               echo "::error::Release $TAG exists as a draft. Assets are attached but nothing is published. Publish it, or delete the draft and re-run."
+              exit 1
+            fi
+            # The update path changes nothing but assets, so a wrong pre-release flag is
+            # an error rather than a correction. Left unchecked, a release hand-created
+            # as stable for a -rc tag stands as the repository's latest stable release.
+            if [[ "$existing_prerelease" != "$PRERELEASE" ]]; then
+              echo "::error::Release $TAG is marked isPrerelease=$existing_prerelease but its version requires prerelease=$PRERELEASE. Assets are attached. Correct the flag on the release, or delete the release and re-run."
               exit 1
             fi
           else
