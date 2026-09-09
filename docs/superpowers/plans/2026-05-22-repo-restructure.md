@@ -11,21 +11,78 @@
 **Spec:** [docs/superpowers/specs/2026-05-22-repo-restructure-design.md](../specs/2026-05-22-repo-restructure-design.md)
 
 > **Corrections required before executing this plan.** See the Follow-ups section of
-> `docs/superpowers/specs/2026-09-09-release-workflow-design.md`. Three items:
+> `docs/superpowers/specs/2026-09-09-release-workflow-design.md`. Four items:
 > (1) `Microsoft.Data.Sqlite` must be 10.0.12 or later, never 10.0.8, or `NU1903`
 > returns and fails every build. The four literals in this plan were corrected on
 > 2026-09-09; check any you add. (2) Set `IsPackable=false` explicitly on
-> `StateStore.Benchmarks` and on every `samples/` project. Task 1.5's shared
-> `Directory.Build.props` sets `PackageReadmeFile` for all Release projects, and one
-> without a `PACKAGE.md` fails with `NU5039`. `OutputType=Exe` does not make a
-> project non-packable, and the `IsPackable != 'false'` guard does not help because
-> `Directory.Build.props` is imported before that property is set. (3) This plan's
+> `tests/StateStore.Benchmarks/StateStore.Benchmarks.csproj`. Task 1.5's shared
+> `Directory.Build.props` sets `PackageReadmeFile` in its unconditional
+> `PropertyGroup`, so every project in the repo carries it in every configuration;
+> only `GeneratePackageOnBuild` is gated on `Release`, which is why a packable
+> project without a `PACKAGE.md` fails the `Release` build with `NU5039`.
+> `OutputType=Exe` does not make a project non-packable — `dotnet msbuild
+> -getProperty:IsPackable -p:Configuration=Release` reports `true` for
+> `StateStore.Benchmarks` — and the `IsPackable != 'false'` guard on the props file
+> does not help, because `Directory.Build.props` is imported before the project body,
+> so the condition evaluates against an empty value and is always true.
+> `tests/StateStore.Tests` needs no edit: `Microsoft.NET.Test.Sdk` already sets
+> `IsPackable=false` (verified). The four `samples/` projects already set it in their
+> own csprojs (Tasks 6.1–6.4) — do not remove it. (3) This plan's
 > spec lists CI as a non-goal; that is superseded by the release workflow spec above,
 > which is implemented and lives at `.github/workflows/release.yml`.
 >
 > The release workflow also asserts one `.nupkg` per project directly under `src/`,
 > so a provider package that produces no package turns a release run red rather than
 > shipping silently short.
+>
+> (4) **`NuGetAuditSuppress` does not cross a `ProjectReference`.** Verified on
+> 2026-09-09 against SDK 10.0.401 with a two-project repro (a `net10.0` exe with a
+> single `ProjectReference` to a `net8.0` library that has `MongoDB.Driver 3.8.1`
+> plus the `GHSA-6c8g-7p36-r338` suppress): the referenced project restores clean and
+> the referring project fails with
+> `error NU1902: Warning As Error: Package 'SharpCompress' 0.30.1 has a known
+> moderate severity vulnerability`. NuGet runs audit per project over that project's
+> own restore graph, and the suppress item is scoped to the project that declares it,
+> so every consumer that inherits SharpCompress transitively needs its own copy.
+> `Directory.Build.props` sets `TreatWarningsAsErrors=true`, so the advisory lands as
+> an error, not a warning.
+>
+> Whether it fires depends on the *consuming* project's TFM, because that sets the
+> default audit mode: `NuGetAuditMode` evaluates to `direct` for `net8.0` and
+> `net9.0` (transitive packages are not audited at all) and to `all` for `net10.0`
+> (measured per-TFM on this repo). Consequences for this plan:
+>
+> - **Task 1.5 Step 3 does not restore green.** Moving the suppress from
+>   `Directory.Build.props` into `src/StateStore/StateStore.csproj` leaves
+>   `tests/StateStore.Tests` (`net10.0`) and the `net10.0` leg of
+>   `tests/StateStore.Benchmarks` referencing a core that still pulls
+>   `MongoDB.Driver`, with no suppress of their own — so Task 1.5 Step 4's
+>   `dotnet build -c Debug` and Task 1.6 Step 2's `dotnet build -c Release` both fail
+>   at restore with `NU1902`.
+> - **After Chunk 3 the same failure persists via Task 3.5**, which adds a
+>   `ProjectReference` from `tests/StateStore.Tests` to `src/StateStore.MongoDb`.
+>   Task 3.4 Step 2's claim that "Core and Sqlite restore cleanly" is true for those
+>   two projects but not for the solution, and the Final verification Step 1
+>   expectation that `dotnet restore` prints `clean` with the suppress scoped to
+>   `StateStore.MongoDb` alone is wrong.
+> - **The reviewer's specific worry about `samples/StateStore.Samples.MongoDb` does
+>   not materialize as the plan is written** — that project targets `net8.0` only, so
+>   its audit mode is `direct` and the transitive advisory is never reported
+>   (confirmed with the same repro retargeted to `net8.0`: restore is silent). It is
+>   a latent trap, not a live one: retargeting any sample to `net10.0`, or setting
+>   `NuGetAuditMode=all` anywhere, turns it red.
+>
+> Remedy: keep the `GHSA-6c8g-7p36-r338` `NuGetAuditSuppress` in
+> `Directory.Build.props` where it is today rather than scoping it to
+> `StateStore.MongoDb.csproj`, and drop Task 1.5 Step 3, the removal in Task 1.5
+> Step 1, and Task 3.4's move. That keeps one narrowly-scoped, single-advisory
+> suppress for the whole repo (it does not disable auditing) and matches what the
+> restore graph actually is: every test project reaches SharpCompress. If the
+> per-project scoping is kept instead, the suppress must be duplicated into
+> `tests/StateStore.Tests` and `tests/StateStore.Benchmarks`, and into any future
+> `net10.0` consumer. Either way, `SharpCompress` has no patched version as of
+> 2026-09-09 (all releases <= 0.47.4 affected), so bumping is not an option yet;
+> re-check before suppressing again.
 
 ---
 
@@ -471,23 +528,63 @@ where it permanently belongs."
 - [ ] **Step 1: Full Debug build clean**
 
 Run: `dotnet build -c Debug --nologo 2>&1 | tail -3`
-Expected: `Build succeeded.  0 Warning(s)  0 Error(s)`.
+Expected: `Build succeeded.  0 Warning(s)  0 Error(s)`. This also fails at restore
+with `NU1902` until note (4)'s audit-suppress scoping is resolved — the failure is a
+restore-time one and so is configuration-independent.
 
 - [ ] **Step 2: Full Release build clean (this is the first time we've exercised the Release path with the new props)**
 
 Run: `dotnet build -c Release --nologo 2>&1 | tail -3`
-Expected: `Build succeeded.  0 Warning(s)  0 Error(s)`.
 
-- [ ] **Step 2a: Confirm Benchmarks/Tests do not produce nupkgs**
+Expected on a first run: **this build fails**, and it fails for two independent
+reasons that must both be cleared. Do Step 2a and note (4) of the header first if you
+would rather not read failures.
 
-Run: `find . -name "*.nupkg" -path "*/bin/Release/*" 2>/dev/null`
-Expected: only `src/StateStore/bin/Release/StateStore.1.0.0.nupkg` (and matching `.snupkg`). If `StateStore.Benchmarks.1.0.0.nupkg` or `StateStore.Tests.1.0.0.nupkg` appears, the SDK default `<IsPackable>` is not auto-falsifying for `OutputType=Exe` or for the test SDK. Fix:
+1. Restore fails with `error NU1902` on `tests/StateStore.Tests` and on the `net10.0`
+   leg of `tests/StateStore.Benchmarks` — the SharpCompress advisory, no longer
+   suppressed for them after Task 1.5 moved the suppress into
+   `src/StateStore/StateStore.csproj`. See note (4) at the top of this plan for the
+   verified mechanism and the remedy.
+2. Once restore succeeds, the build fails with `error NU5039` on
+   `tests/StateStore.Benchmarks` — it is packable and has no `PACKAGE.md`. Step 2a
+   fixes that.
+
+Expected after both are addressed: `Build succeeded.  0 Warning(s)  0 Error(s)`.
+
+- [ ] **Step 2a: Mark the non-package projects non-packable**
+
+This is a required edit, not a conditional check. `tests/StateStore.Benchmarks` and
+every `samples/` project must set `<IsPackable>false</IsPackable>` explicitly. Task
+1.5's `Directory.Build.props` sets `PackageReadmeFile=PACKAGE.md` in its
+unconditional `PropertyGroup` and turns on `GeneratePackageOnBuild` for `Release`, so
+any project that is still packable and has no `PACKAGE.md` fails the `Release` build
+with `NU5039`. `OutputType=Exe` does not make a project non-packable —
+`dotnet msbuild -getProperty:IsPackable -p:Configuration=Release` reports `true` for
+`StateStore.Benchmarks` — and the `IsPackable != 'false'` guard on the props file's
+`ItemGroup` does not help, because `Directory.Build.props` is imported before the
+project body and so evaluates that condition against an empty value.
+
+The symptom to expect if this is skipped is `NU5039` on the `Release` build, **not**
+a stray `StateStore.Benchmarks.1.0.0.nupkg` — the build fails before any package is
+produced, so there is nothing to find on disk.
 
 Add `<IsPackable>false</IsPackable>` to the `<PropertyGroup>` in:
 - `tests/StateStore.Benchmarks/StateStore.Benchmarks.csproj`
-- `tests/StateStore.Tests/StateStore.Tests.csproj`
 
-Then re-run Step 2 + Step 2a; commit the csproj fix as a separate commit with message "Mark test and benchmark projects as non-packable" before continuing. If Step 2a is clean on the first run, skip the fix entirely.
+`tests/StateStore.Tests` needs no edit — `Microsoft.NET.Test.Sdk` already sets
+`IsPackable=false` (verified with the `-getProperty` command above). The four
+`samples/` projects do not exist yet at this point in the plan; Tasks 6.1–6.4 already
+include `<IsPackable>false</IsPackable>` in each csproj, so leave those as written.
+
+Verify with: `dotnet msbuild tests/StateStore.Benchmarks/StateStore.Benchmarks.csproj -getProperty:IsPackable -p:Configuration=Release`
+Expected: `false`.
+
+Then re-run Step 2, and confirm the only packages produced are the core ones:
+
+Run: `find . -name "*.nupkg" -path "*/bin/Release/*" 2>/dev/null`
+Expected: only `src/StateStore/bin/Release/StateStore.1.0.0.nupkg` (and matching `.snupkg`).
+
+Commit the csproj fix as a separate commit with message "Mark the benchmark project as non-packable" before continuing.
 
 - [ ] **Step 3: Tests pass**
 
