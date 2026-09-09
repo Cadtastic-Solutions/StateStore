@@ -179,8 +179,6 @@ jobs:
     permissions:
       contents: write
     env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
       PRERELEASE: ${{ needs.build.outputs.prerelease }}
     steps:
@@ -191,6 +189,9 @@ jobs:
           path: artifacts/packages
 
       - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -206,14 +207,31 @@ jobs:
             echo "::error::No package assets to attach to release $TAG."
             exit 1
           fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          # The existence probe doubles as a draft check. gh release create works in
+          # three API calls (create as draft, upload assets, publish), so a failure
+          # partway through leaves a draft, and a plain retry would attach assets to
+          # it and exit 0 with nothing published.
+          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
             echo "Release $TAG already exists. Uploading assets."
-            gh release upload "$TAG" "${assets[@]}" --clobber
+            gh release upload "$TAG" --clobber "${assets[@]}"
+            if [[ "$draft" == "true" ]]; then
+              echo "::error::Release $TAG exists as a draft. Assets are attached but nothing is published. Publish it, or delete the draft and re-run."
+              exit 1
+            fi
           else
             echo "Creating release $TAG."
+            # --verify-tag earns its place: without it, gh creates a missing tag from
+            # the default branch HEAD and publishes a release whose contents disagree
+            # with the tag it names.
             args=(--title "$TAG" --generate-notes --verify-tag)
             if [[ "$PRERELEASE" == "true" ]]; then
               args+=(--prerelease)
             fi
-            gh release create "$TAG" "${assets[@]}" "${args[@]}"
+            gh release create "$TAG" "${args[@]}" "${assets[@]}"
           fi
+          {
+            echo
+            echo "### Release"
+            echo
+            echo "- $TAG: $(gh release view "$TAG" --json url --jq .url)"
+          } >> "$GITHUB_STEP_SUMMARY"
