@@ -196,7 +196,7 @@ All moves use `git mv` so history follows.
 | `src/StateStore.MongoDb/StateStore.MongoDb.csproj` | Multi-targets net8.0/net9.0/net10.0. References `StateStore` core via `<ProjectReference>`. Depends on `MongoDB.Driver 3.8.1`. Carries the `NuGetAuditSuppress` for GHSA-6c8g-7p36-r338. |
 | `src/StateStore.MongoDb/PACKAGE.md` | ~30-line NuGet readme: install + one quick-start snippet + repo link. |
 | `src/StateStore.MongoDb/StateStoreOptionsMongoExtensions.cs` | Houses both `UseMongoDb(this StateStoreBuilder, ...)` (standalone) and `UseMongoDb(this StateStoreOptions, ...)` (DI). Namespace `StateStore` for discovery. |
-| `src/StateStore.Sqlite/StateStore.Sqlite.csproj` | Mirrors MongoDb package. Depends on `Microsoft.Data.Sqlite 10.0.8`. |
+| `src/StateStore.Sqlite/StateStore.Sqlite.csproj` | Mirrors MongoDb package. Depends on `Microsoft.Data.Sqlite 10.0.12`. |
 | `src/StateStore.Sqlite/PACKAGE.md` | Mirror of MongoDb. |
 | `src/StateStore.Sqlite/StateStoreOptionsSqliteExtensions.cs` | Mirror of MongoDb extensions. |
 | `samples/StateStore.Samples.QuickStart/Program.cs` + `.csproj` | Minimal `StateStoreBuilder` + InMemory roundtrip. ~30 lines. |

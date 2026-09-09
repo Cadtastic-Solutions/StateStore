@@ -6,9 +6,26 @@
 
 **Architecture:** The core `StateStore` package retains InMemory + FileSystem providers and the abstractions/builder/serialization/middleware/AutoSave subsystems. Two new packages (`StateStore.MongoDb`, `StateStore.Sqlite`) live under `src/`, each adding their own provider, options, and `UseXxx(...)` extension methods on both `StateStoreBuilder` (standalone) and `StateStoreOptions` (DI). The DI surface is opened via a public `ConfigureProvider(Action<IServiceCollection>)` method on `StateStoreOptions` — replacing the closed enum so external assemblies can plug in.
 
-**Tech Stack:** .NET 8/9/10, xUnit v3, MSBuild SDK-style projects, `Microsoft.SourceLink.GitHub`, `MongoDB.Driver 3.8.1`, `Microsoft.Data.Sqlite 10.0.8`, `Microsoft.Extensions.DependencyInjection.Abstractions 10.0.8`.
+**Tech Stack:** .NET 8/9/10, xUnit v3, MSBuild SDK-style projects, `Microsoft.SourceLink.GitHub`, `MongoDB.Driver 3.8.1`, `Microsoft.Data.Sqlite 10.0.12`, `Microsoft.Extensions.DependencyInjection.Abstractions 10.0.8`.
 
 **Spec:** [docs/superpowers/specs/2026-05-22-repo-restructure-design.md](../specs/2026-05-22-repo-restructure-design.md)
+
+> **Corrections required before executing this plan.** See the Follow-ups section of
+> `docs/superpowers/specs/2026-09-09-release-workflow-design.md`. Three items:
+> (1) `Microsoft.Data.Sqlite` must be 10.0.12 or later, never 10.0.8, or `NU1903`
+> returns and fails every build. The four literals in this plan were corrected on
+> 2026-09-09; check any you add. (2) Set `IsPackable=false` explicitly on
+> `StateStore.Benchmarks` and on every `samples/` project. Task 1.5's shared
+> `Directory.Build.props` sets `PackageReadmeFile` for all Release projects, and one
+> without a `PACKAGE.md` fails with `NU5039`. `OutputType=Exe` does not make a
+> project non-packable, and the `IsPackable != 'false'` guard does not help because
+> `Directory.Build.props` is imported before that property is set. (3) This plan's
+> spec lists CI as a non-goal; that is superseded by the release workflow spec above,
+> which is implemented and lives at `.github/workflows/release.yml`.
+>
+> The release workflow also asserts one `.nupkg` per project directly under `src/`,
+> so a provider package that produces no package turns a release run red rather than
+> shipping silently short.
 
 ---
 
@@ -378,7 +395,7 @@ Replace its current `<Project>` content with:
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.8" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageReference Include="MongoDB.Driver" Version="3.8.1" />
   </ItemGroup>
 
@@ -1526,7 +1543,7 @@ Create `src/StateStore.Sqlite/StateStore.Sqlite.csproj`:
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
   </ItemGroup>
 
 </Project>
@@ -1664,7 +1681,7 @@ Expected: `Build succeeded.  0 Warning(s)  0 Error(s)`. Core no longer reference
 
 Find:
 ```xml
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
 ```
 Delete this line.
 
