@@ -33,7 +33,7 @@ One block deliberately does not `cd` to the repository: Task 2.2 Step 4 runs ins
 
 **Linting needs shellcheck on the PATH.** actionlint runs shellcheck over every `run:` block, but only if it can find the binary; otherwise it silently disables that rule and still exits 0. Every actionlint command in this plan therefore prepends the winget install location of shellcheck 0.11.0 to `PATH`. If you see `Rule "shellcheck" was disabled` in `actionlint -verbose` output, the bash is not being checked. Install with `winget install koalaman.shellcheck` if the path does not exist.
 
-**No apostrophes inside heredocs.** An apostrophe in prose inside a `cat <<'YML'` or `cat <<'SH'` block breaks the command transport of the tooling that runs these blocks, even though bash itself would accept it. The workflow comments and harness comments are written without them on purpose. Keep it that way when editing.
+**No unbalanced apostrophes inside heredocs.** A lone apostrophe in prose inside a `cat <<'YML'` or `cat <<'SH'` block, such as a contraction or a possessive, breaks the command transport of the tooling that runs these blocks, even though bash itself would accept it. Balanced single quotes used as shell quoting, such as `'$TAG'` or `'*.csproj'`, are fine and appear throughout. The workflow comments and harness comments avoid contractions on purpose. Keep it that way when editing.
 
 **Already verified during planning.** These do not need re-checking, and a failure in any of them means a transcription error rather than a design problem:
 
@@ -279,9 +279,9 @@ wc -l .github/workflows/release.yml
 
 Expected: `58 .github/workflows/release.yml`.
 
-Four choices in this file are deliberate and are commented in place, because each is a plausible "fix" for a later editor to undo. The workflow-level `permissions: {}` makes every job-level grant explicit rather than a narrowing of an unknown default. `defaults.run.shell: bash` documents that the scripts use bash-only constructs. `timeout-minutes` bounds a wedged run, which matters because `cancel-in-progress: false` would otherwise let it hold the concurrency group for six hours. And the variable is `RELEASE_VERSION`, never `RELEASE_VERSION`: MSBuild promotes environment variables to properties, so a variable named `RELEASE_VERSION` in `$GITHUB_ENV` would silently become the `Version` property for every later `dotnet` command, including restore, with behavior that differs between Debug and Release.
+Four choices in this file are deliberate and are commented in place, because each is a plausible "fix" for a later editor to undo. The workflow-level `permissions: {}` makes every job-level grant explicit rather than a narrowing of an unknown default. `defaults.run.shell: bash` documents that the scripts use bash-only constructs. `timeout-minutes` bounds a wedged run, which matters because `cancel-in-progress: false` would otherwise let it hold the concurrency group for six hours. And the variable is `RELEASE_VERSION`, never `VERSION`: MSBuild promotes environment variables to properties, so a variable named `VERSION` in `$GITHUB_ENV` would silently become the `Version` property for every later `dotnet` command, including restore, with behavior that differs between Debug and Release.
 
-The comments contain no apostrophes. That is not style: an apostrophe in prose inside a heredoc breaks the command transport of the tooling that runs these blocks, so keep them out of anything that goes through `cat <<'YML'`.
+The comments contain no contractions or possessives. That is not style: a lone apostrophe in prose inside a heredoc breaks the command transport of the tooling that runs these blocks. Balanced shell quoting like `'$TAG'` is unaffected.
 
 - [ ] **Step 2: Run the harness to verify it passes**
 
@@ -371,7 +371,7 @@ git diff --cached --stat .github/workflows/release.yml
 git diff --cached .github/workflows/release.yml | grep -E '^[-+]' | grep -v -E '^(\+\+\+|---)' | grep -c -E 'RELEASE_VERSION|permissions: \{\}|timeout-minutes|shell: bash|^\+\s*#|rc\.01'
 ```
 
-Expected: the stat line shows `1 file changed` with both insertions and deletions, and the count is at least 12, meaning the changed lines are the rename, the permissions floor, the timeout, the shell default, the comments, and the message. Any changed line outside those categories is a transcription error.
+Expected: the stat line shows `1 file changed, 22 insertions(+), 5 deletions(-)`, and the count is at least 12. The count confirms the changed lines are dominated by the intended amendments. It is not exhaustive: the two blank lines, the `defaults:` and `run:` structural keys, and the five removed lines fall outside the grep pattern and are expected. Read the full `git diff --cached` once; anything that is not the rename, the permissions floor, the timeout, the shell default, a comment, or the message is a transcription error.
 
 - [ ] **Step 4: Commit**
 
