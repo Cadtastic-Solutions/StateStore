@@ -5,9 +5,17 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+*'
 
+# No default grants. Each job declares exactly the permissions it needs.
+permissions: {}
+
 concurrency:
   group: release-${{ github.ref }}
+  # Never kill an in-flight release partway through uploading assets.
   cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
 
 env:
   DOTNET_NOLOGO: true
@@ -16,6 +24,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     outputs:
@@ -25,17 +34,25 @@ jobs:
         id: version
         run: |
           set -euo pipefail
+          # Read the tag from the runner environment rather than interpolating the
+          # github.ref_name expression into this script, so a crafted ref cannot inject shell.
           TAG="$GITHUB_REF_NAME"
+          # SemVer 2 without build metadata. NuGet strips a +suffix from the package
+          # filename, which would break the version check in the Verify step, and its
+          # strict parser rejects leading zeros in numeric pre-release identifiers mid-build.
           PATTERN='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
           if [[ ! "$TAG" =~ $PATTERN ]]; then
-            echo "::error::Tag '$TAG' is not a release tag. Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease."
+            echo "::error::Tag '$TAG' is not a release tag. Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease, with no leading zeros in numeric parts (use -rc.1, not -rc.01) and no +build metadata."
             exit 1
           fi
-          VERSION="${TAG#v}"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          if [[ "$VERSION" == *-* ]]; then
+          # Named RELEASE_VERSION rather than VERSION on purpose: MSBuild promotes
+          # environment variables to properties, so a VERSION variable would silently
+          # become the Version property for every dotnet command in this job.
+          RELEASE_VERSION="${TAG#v}"
+          echo "RELEASE_VERSION=$RELEASE_VERSION" >> "$GITHUB_ENV"
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "Releasing version $VERSION from tag $TAG"
+          echo "Releasing version $RELEASE_VERSION from tag $TAG"
