@@ -59,6 +59,10 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Nothing after this step talks to git, and dotnet pack executes MSBuild from
+          # every csproj under src/, so do not leave the token on disk for that code.
+          persist-credentials: false
 
       - name: Set up .NET from global.json
         if: hashFiles('global.json') != ''
@@ -78,10 +82,13 @@ jobs:
       - name: Build
         run: |
           set -euo pipefail
+          # Test and Pack run with --no-build and must pass exactly the same -p: values
+          # as this step, or the assemblies and the package will disagree about the version.
           dotnet build StateStore.sln -c Release --no-restore \
             -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true
 
       - name: Test
+        id: test
         run: |
           set -euo pipefail
           dotnet test StateStore.sln -c Release --no-build \
@@ -89,7 +96,7 @@ jobs:
             --logger trx --results-directory artifacts/test-results
 
       - name: Upload test results
-        if: failure()
+        if: failure() && steps.test.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
           name: test-results
@@ -130,6 +137,12 @@ jobs:
           packages=(artifacts/packages/*.nupkg)
           if [[ ${#packages[@]} -eq 0 ]]; then
             echo "::error::No .nupkg was produced."
+            exit 1
+          fi
+
+          projects=(src/*/*.csproj)
+          if [[ ${#packages[@]} -ne ${#projects[@]} ]]; then
+            echo "::error::Packed ${#projects[@]} project(s) but found ${#packages[@]} .nupkg file(s). A project under src/ produced no package (IsPackable=false?)."
             exit 1
           fi
 
