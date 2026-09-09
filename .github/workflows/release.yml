@@ -71,3 +71,90 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore StateStore.sln
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          dotnet build StateStore.sln -c Release --no-restore \
+            -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true
+
+      - name: Test
+        run: |
+          set -euo pipefail
+          dotnet test StateStore.sln -c Release --no-build \
+            -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true \
+            --logger trx --results-directory artifacts/test-results
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: artifacts/test-results
+          if-no-files-found: ignore
+
+      - name: Pack
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          projects=(src/*/*.csproj)
+          if [[ ${#projects[@]} -eq 0 ]]; then
+            echo "::error::No projects found under src/. Nothing to pack."
+            exit 1
+          fi
+          {
+            echo "### Packed projects"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          for proj in "${projects[@]}"; do
+            echo "Packing $proj"
+            dotnet pack "$proj" -c Release --no-build -o artifacts/packages \
+              -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true
+            echo "- \`$proj\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Verify packages
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          nested=$(find src -mindepth 3 -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*/.*/*')
+          if [[ -n "$nested" ]]; then
+            echo "::error::Projects nested too deep for the src/*/*.csproj glob and excluded from this release: $(echo "$nested" | tr '\n' ' ')"
+            exit 1
+          fi
+
+          packages=(artifacts/packages/*.nupkg)
+          if [[ ${#packages[@]} -eq 0 ]]; then
+            echo "::error::No .nupkg was produced."
+            exit 1
+          fi
+
+          {
+            echo
+            echo "### Packages"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for pkg in artifacts/packages/*.nupkg artifacts/packages/*.snupkg; do
+            case "$pkg" in
+              *".$RELEASE_VERSION.nupkg"|*".$RELEASE_VERSION.snupkg") ;;
+              *)
+                echo "::error::Package '$(basename "$pkg")' does not carry version $RELEASE_VERSION."
+                exit 1
+                ;;
+            esac
+            echo "- \`$(basename "$pkg")\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          ls -l artifacts/packages
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: artifacts/packages/*
+          if-no-files-found: error
