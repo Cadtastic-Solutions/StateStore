@@ -39,7 +39,7 @@ One block deliberately does not `cd` to the repository: Task 2.2 Step 4 runs ins
 
 | Fact | Evidence |
 |---|---|
-| The complete workflow this plan produces is 219 lines and passes actionlint 1.7.12 with shellcheck 0.11.0 active, zero findings | Assembled and linted during planning, re-measured after each review amendment |
+| The complete workflow this plan produces is 237 lines and passes actionlint 1.7.12 with shellcheck 0.11.0 active, zero findings | Assembled and linted during planning, re-measured after each review amendment |
 | The version step handles all 18 tag cases correctly, both accept and reject, including `prerelease=false` | Harness in Task 1.1 run against the assembled file |
 | The Verify packages step behaves correctly across six cases including version mismatch, nested projects, and a project that produced no package | Task 2.2 Step 4 run against a synthetic tree |
 | `dotnet pack --no-build` works despite `GeneratePackageOnBuild=true` for Release | Local probe produced `StateStore.0.0.1-probe.nupkg` |
@@ -55,7 +55,7 @@ One block deliberately does not `cd` to the repository: Task 2.2 Step 4 runs ins
 
 | File | Responsibility | Status |
 |---|---|---|
-| `.github/workflows/release.yml` | The entire deliverable. Tag validation, version derivation, build, test, pack, artifact upload, release creation. 219 lines when complete. | Create (Chunks 1 to 3) |
+| `.github/workflows/release.yml` | The entire deliverable. Tag validation, version derivation, build, test, pack, artifact upload, release creation. 237 lines when complete. | Create (Chunks 1 to 3) |
 | `docs/superpowers/specs/2026-09-09-release-workflow-design.md` | The spec for this work. Its status line, Verification section, and one stale command are updated once the workflow is proven. | Modify (Task 5.1) |
 | `docs/superpowers/plans/2026-05-22-repo-restructure.md` | Unrelated pending plan. Gains a warning note plus four corrected version literals. | Modify (Task 5.2) |
 | `docs/superpowers/specs/2026-05-22-repo-restructure-design.md` | That plan's spec. One stale version literal corrected. | Modify (Task 5.2) |
@@ -472,7 +472,7 @@ This was verified during planning, so actionlint should accept `hashFiles` in a 
 
 then change the two setup conditions to `steps.sdkpin.outputs.pinned == 'true'` and `== 'false'`.
 
-Taking that fallback changes two later expectations, and both are stated as checksums, so note them now: Task 2.3 Step 1's step list becomes twelve names with `Detect global.json` third, and Chunk 3 Step 1's `wc -l` reports 229 rather than 219. Neither is then a transcription error.
+Taking that fallback changes two later expectations, and both are stated as checksums, so note them now: Task 2.3 Step 1's step list becomes twelve names with `Detect global.json` third, and Chunk 3 Step 1's `wc -l` reports 247 rather than 237. Neither is then a transcription error.
 
 - [ ] **Step 3: Commit**
 
@@ -854,7 +854,7 @@ nested too deep for the glob rather than dropping it silently."
 wc -l .github/workflows/release.yml
 ```
 
-Expected: `1 file changed, 96 insertions(+)` and `173 .github/workflows/release.yml`. Chunk 3 adds the remaining 46 lines to reach the 219-line checksum.
+Expected: `1 file changed, 96 insertions(+)` and `173 .github/workflows/release.yml`. Chunk 3 adds the remaining 64 lines to reach the 237-line checksum.
 
 ### Task 2.4: Apply the Chunk 2 quality-review amendments
 
@@ -939,8 +939,6 @@ cat >> .github/workflows/release.yml <<'YML'
     permissions:
       contents: write
     env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
       PRERELEASE: ${{ needs.build.outputs.prerelease }}
     steps:
@@ -951,6 +949,9 @@ cat >> .github/workflows/release.yml <<'YML'
           path: artifacts/packages
 
       - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -966,23 +967,42 @@ cat >> .github/workflows/release.yml <<'YML'
             echo "::error::No package assets to attach to release $TAG."
             exit 1
           fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          # The existence probe doubles as a draft check. gh release create works in
+          # three API calls (create as draft, upload assets, publish), so a failure
+          # partway through leaves a draft, and a plain retry would attach assets to
+          # it and exit 0 with nothing published.
+          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
             echo "Release $TAG already exists. Uploading assets."
-            gh release upload "$TAG" "${assets[@]}" --clobber
+            gh release upload "$TAG" --clobber "${assets[@]}"
+            if [[ "$draft" == "true" ]]; then
+              echo "::error::Release $TAG exists as a draft. Assets are attached but nothing is published. Publish it, or delete the draft and re-run."
+              exit 1
+            fi
           else
             echo "Creating release $TAG."
+            # --verify-tag earns its place: without it, gh creates a missing tag from
+            # the default branch HEAD and publishes a release whose contents disagree
+            # with the tag it names.
             args=(--title "$TAG" --generate-notes --verify-tag)
             if [[ "$PRERELEASE" == "true" ]]; then
               args+=(--prerelease)
             fi
-            gh release create "$TAG" "${assets[@]}" "${args[@]}"
+            gh release create "$TAG" "${args[@]}" "${assets[@]}"
           fi
+          {
+            echo
+            echo "### Release"
+            echo
+            echo "- $TAG: $(gh release view "$TAG" --json url --jq .url)"
+          } >> "$GITHUB_STEP_SUMMARY"
 YML
 
 wc -l .github/workflows/release.yml
 ```
 
-Expected: `219 .github/workflows/release.yml`. This number is the whole-file checksum for this plan: a different count means a transcription error somewhere in Chunks 1 to 3, not a design problem.
+Expected: `237 .github/workflows/release.yml`. This number is the whole-file checksum for this plan: a different count means a transcription error somewhere in Chunks 1 to 3, not a design problem.
+
+Three details in this job are load-bearing and easy to undo by accident. The probe captures `isDraft` rather than discarding output, because `gh release create` is three API calls and a failure partway leaves a draft that a plain retry would silently accept. `--verify-tag` stops `gh` from creating a missing tag at the default branch HEAD and publishing a release whose contents disagree with it. And `GH_TOKEN` sits on the step rather than the job, so the only write credential in the workflow is not in the artifact download step's environment.
 
 - [ ] **Step 2: Lint**
 
@@ -1040,6 +1060,73 @@ git commit -m "Add release job to release workflow
 Creates the GitHub Release for the tag with the packages attached, or
 uploads over the assets of a release that already exists so a failed
 run can be retried. Marks a hyphenated version as a pre-release."
+wc -l .github/workflows/release.yml
+```
+
+Expected: `1 file changed, 64 insertions(+)` and `237 .github/workflows/release.yml`.
+
+### Task 3.2: Apply the Chunk 3 quality-review amendments
+
+**Files:**
+- Modify: `.github/workflows/release.yml`
+
+**Why this task exists.** Task 3.1 was first executed as commit `4d0a345`, leaving a 219-line file whose release job used a bare `gh release view` probe. The code quality review of that state found that `gh release create` performs three API calls, creating the release as a draft, uploading assets, then publishing, so a failure partway through leaves a draft. A plain retry then took the update branch, attached the assets, and exited 0 with nothing published: a green run over an unpublished release. That is now fixed, along with four cheap hardenings. All are folded into the Task 3.1 heredoc above, so a fresh executor gets the final form and this task is a no-op for them. If your checkout is at `4d0a345`, do the following.
+
+- [ ] **Step 1: Reset the file to its post-Chunk-2 state and re-append**
+
+The append in Task 3.1 is not idempotent, so drop the old release job first.
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+git show 817349e:.github/workflows/release.yml > .github/workflows/release.yml
+wc -l .github/workflows/release.yml
+```
+
+Expected: `173 .github/workflows/release.yml`.
+
+- [ ] **Step 2: Re-run Task 3.1 Step 1**
+
+Expected: `237 .github/workflows/release.yml`.
+
+- [ ] **Step 3: Re-run Task 3.1 Steps 2 to 4**
+
+Expected: actionlint prints nothing and exits 0; the job graph grep matches; the staged form is `ASCII text`.
+
+- [ ] **Step 4: Confirm the diff is only the intended amendments**
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+git add .github/workflows/release.yml
+git diff --cached --stat
+git diff --cached | grep '^-' | grep -v '^---'
+```
+
+Expected: `1 file changed, 23 insertions(+), 5 deletions(-)`, and these five removed lines exactly:
+
+```
+-      GH_TOKEN: ${{ github.token }}
+-      GH_REPO: ${{ github.repository }}
+-          if gh release view "$TAG" >/dev/null 2>&1; then
+-            gh release upload "$TAG" "${assets[@]}" --clobber
+-            gh release create "$TAG" "${assets[@]}" "${args[@]}"
+```
+
+The two env lines move to the step, and the three `gh` lines are replaced by their reordered forms. Everything added is the step-level `env` block, the draft probe with its four-line comment, the draft failure branch, the three-line `--verify-tag` comment, and the six-line step-summary block. Anything else is a transcription error.
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+git commit -m "Harden release job after review
+
+Treat a draft release as an error rather than success. gh release
+create runs as three API calls, so a failure partway leaves a draft,
+and the retry path would attach assets to it and exit 0 with nothing
+published. The probe now captures isDraft and fails loudly.
+
+Also confine the write token to the step that calls gh, put flags
+before positional asset paths, record the release URL in the run
+summary, and comment why --verify-tag is not optional."
 ```
 
 ---
@@ -1505,7 +1592,7 @@ The plan is complete when all of these hold. The three rows marked gated depend 
 |---|---|---|---|
 | 1 | The version step accepts and rejects exactly as specified, and derives the right version and pre-release flag | `bash "$SCRATCH/test-version-step.sh"` prints PASS for all 18 cases | No |
 | 2 | The workflow is valid and shellcheck-clean | actionlint exits 0 with no output | No |
-| 3 | The assembled file matches this plan | `wc -l .github/workflows/release.yml` reports 219, or 229 if Task 2.1's `hashFiles` fallback was taken | No |
+| 3 | The assembled file matches this plan | `wc -l .github/workflows/release.yml` reports 237, or 247 if Task 2.1's `hashFiles` fallback was taken | No |
 | 4 | The verify logic catches mismatched versions, missing packages, nested projects, and a project that produced no package | Task 2.2 Step 4's six cases behave as tabulated | No |
 | 5 | A command-line version overrides the csproj value | The local probe produced `StateStore.0.0.1-probe.nupkg` | No |
 | 6 | Every packable project is reachable by the glob | `find src -mindepth 3 -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*/.*/*'` prints nothing | No |
