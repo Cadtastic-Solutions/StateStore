@@ -171,3 +171,49 @@ jobs:
           name: packages
           path: artifacts/packages/*
           if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+      PRERELEASE: ${{ needs.build.outputs.prerelease }}
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v8
+        with:
+          name: packages
+          path: artifacts/packages
+
+      - name: Create or update release
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # A stale output reference yields an empty string, not an error. Left
+          # unchecked, empty reads as "not a pre-release" and a -rc tag would be
+          # published as the latest stable release.
+          if [[ "$PRERELEASE" != "true" && "$PRERELEASE" != "false" ]]; then
+            echo "::error::prerelease flag from the build job is '$PRERELEASE'; expected true or false."
+            exit 1
+          fi
+          assets=(artifacts/packages/*.nupkg artifacts/packages/*.snupkg)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "::error::No package assets to attach to release $TAG."
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists. Uploading assets."
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            echo "Creating release $TAG."
+            args=(--title "$TAG" --generate-notes --verify-tag)
+            if [[ "$PRERELEASE" == "true" ]]; then
+              args+=(--prerelease)
+            fi
+            gh release create "$TAG" "${assets[@]}" "${args[@]}"
+          fi
