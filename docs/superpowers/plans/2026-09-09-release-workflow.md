@@ -31,11 +31,15 @@ One block deliberately does not `cd` to the repository: Task 2.2 Step 4 runs ins
 1. `git add` prints `warning: in the working copy of '<path>', LF will be replaced by CRLF the next time Git touches it` whenever it actually updates the index entry. Git's system config sets `core.autocrlf=true`, and `.gitattributes` sets `* text=auto`, so files are stored with LF and checked out with CRLF. That is the desired arrangement: the Linux runner reads the LF copy from the repository. Re-staging an already-staged identical file prints nothing, so the warning's absence is not a signal either way.
 2. `git status --short` shows pre-existing noise unrelated to this work, currently ` M .claude/settings.local.json` and `?? src/.claude/`. The second is a nested git worktree. Leave both alone.
 
+**Linting needs shellcheck on the PATH.** actionlint runs shellcheck over every `run:` block, but only if it can find the binary; otherwise it silently disables that rule and still exits 0. Every actionlint command in this plan therefore prepends the winget install location of shellcheck 0.11.0 to `PATH`. If you see `Rule "shellcheck" was disabled` in `actionlint -verbose` output, the bash is not being checked. Install with `winget install koalaman.shellcheck` if the path does not exist.
+
+**No apostrophes inside heredocs.** An apostrophe in prose inside a `cat <<'YML'` or `cat <<'SH'` block breaks the command transport of the tooling that runs these blocks, even though bash itself would accept it. The workflow comments and harness comments are written without them on purpose. Keep it that way when editing.
+
 **Already verified during planning.** These do not need re-checking, and a failure in any of them means a transcription error rather than a design problem:
 
 | Fact | Evidence |
 |---|---|
-| The complete workflow this plan produces is 181 lines and passes actionlint 1.7.12 clean, shellcheck included | Assembled and linted during planning |
+| The complete workflow this plan produces is 206 lines and passes actionlint 1.7.12 with shellcheck 0.11.0 active, zero findings | Assembled and linted during planning |
 | The version step handles all 18 tag cases correctly, both accept and reject, including `prerelease=false` | Harness in Task 1.1 run against the assembled file |
 | The Verify packages step behaves correctly across five cases including version mismatch and nested projects | Task 2.2 Step 4 run against a synthetic tree |
 | `dotnet pack --no-build` works despite `GeneratePackageOnBuild=true` for Release | Local probe produced `StateStore.0.0.1-probe.nupkg` |
@@ -51,7 +55,7 @@ One block deliberately does not `cd` to the repository: Task 2.2 Step 4 runs ins
 
 | File | Responsibility | Status |
 |---|---|---|
-| `.github/workflows/release.yml` | The entire deliverable. Tag validation, version derivation, build, test, pack, artifact upload, release creation. 181 lines when complete. | Create (Chunks 1 to 3) |
+| `.github/workflows/release.yml` | The entire deliverable. Tag validation, version derivation, build, test, pack, artifact upload, release creation. 206 lines when complete. | Create (Chunks 1 to 3) |
 | `docs/superpowers/specs/2026-09-09-release-workflow-design.md` | The spec for this work. Its status line, Verification section, and one stale command are updated once the workflow is proven. | Modify (Task 5.1) |
 | `docs/superpowers/plans/2026-05-22-repo-restructure.md` | Unrelated pending plan. Gains a warning note plus four corrected version literals. | Modify (Task 5.2) |
 | `docs/superpowers/specs/2026-05-22-repo-restructure-design.md` | That plan's spec. One stale version literal corrected. | Modify (Task 5.2) |
@@ -74,7 +78,7 @@ The riskiest logic in the workflow is the tag contract, and it is the only part 
 
 - [ ] **Step 1: Write the harness**
 
-This script extracts the first `run: |` block out of the workflow, which is the version step, and executes it against every tag case with `GITHUB_REF_NAME`, `GITHUB_ENV`, and `GITHUB_OUTPUT` pointed at temporary files. It asserts three things per accepted tag (exit status, derived `VERSION`, `prerelease` output) and two per rejected tag (non-zero exit, the expected error text).
+This script extracts the first `run: |` block out of the workflow, which is the version step, and executes it against every tag case with `GITHUB_REF_NAME`, `GITHUB_ENV`, and `GITHUB_OUTPUT` pointed at temporary files. It asserts three things per accepted tag (exit status, derived `RELEASE_VERSION`, `prerelease` output) and two per rejected tag (non-zero exit, the expected error text).
 
 Executing the real step rather than a copy of its regex is the point. A harness holding its own copy of the pattern would pass while the shipped workflow was broken, and it would leave the version derivation and the `prerelease` flag untested entirely.
 
@@ -86,7 +90,7 @@ mkdir -p "$SCRATCH"
 cat > "$SCRATCH/test-version-step.sh" <<'SH'
 #!/usr/bin/env bash
 # Executes the real "Resolve version from tag" step out of the shipped workflow
-# against every tag case, asserting exit status, derived VERSION, and the
+# against every tag case, asserting exit status, derived RELEASE_VERSION, and the
 # prerelease output. Extracting the step means this test cannot drift from it.
 set -uo pipefail
 
@@ -114,7 +118,7 @@ if ! grep -q "PATTERN=" "$STEP"; then
   exit 1
 fi
 
-# tag|expected VERSION|expected prerelease
+# tag|expected RELEASE_VERSION|expected prerelease
 ACCEPT=(
   "v1.0.0|1.0.0|false"
   "v10.20.30|10.20.30|false"
@@ -141,7 +145,7 @@ run_step() {
 for case in "${ACCEPT[@]}"; do
   IFS='|' read -r tag want_ver want_pre <<< "$case"
   run_step "$tag"; rc=$?
-  got_ver="$(sed -n 's/^VERSION=//p' "$WORK/env")"
+  got_ver="$(sed -n 's/^RELEASE_VERSION=//p' "$WORK/env")"
   got_pre="$(sed -n 's/^prerelease=//p' "$WORK/out")"
   if [[ $rc -eq 0 && "$got_ver" == "$want_ver" && "$got_pre" == "$want_pre" ]]; then
     printf '  ok       accept  %-18s version=%-16s prerelease=%s\n' "$tag" "$got_ver" "$got_pre"
@@ -217,9 +221,17 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+*'
 
+# No default grants. Each job declares exactly the permissions it needs.
+permissions: {}
+
 concurrency:
   group: release-${{ github.ref }}
+  # Never kill an in-flight release partway through uploading assets.
   cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
 
 env:
   DOTNET_NOLOGO: true
@@ -228,6 +240,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     outputs:
@@ -237,26 +250,38 @@ jobs:
         id: version
         run: |
           set -euo pipefail
+          # Read the tag from the runner environment rather than interpolating the
+          # github.ref_name expression into this script, so a crafted ref cannot inject shell.
           TAG="$GITHUB_REF_NAME"
+          # SemVer 2 without build metadata. NuGet strips a +suffix from the package
+          # filename, which would break the version check in the Verify step, and its
+          # strict parser rejects leading zeros in numeric pre-release identifiers mid-build.
           PATTERN='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
           if [[ ! "$TAG" =~ $PATTERN ]]; then
-            echo "::error::Tag '$TAG' is not a release tag. Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease."
+            echo "::error::Tag '$TAG' is not a release tag. Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease, with no leading zeros in numeric parts (use -rc.1, not -rc.01) and no +build metadata."
             exit 1
           fi
-          VERSION="${TAG#v}"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          if [[ "$VERSION" == *-* ]]; then
+          # Named RELEASE_VERSION rather than VERSION on purpose: MSBuild promotes
+          # environment variables to properties, so a VERSION variable would silently
+          # become the Version property for every dotnet command in this job.
+          RELEASE_VERSION="${TAG#v}"
+          echo "RELEASE_VERSION=$RELEASE_VERSION" >> "$GITHUB_ENV"
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "Releasing version $VERSION from tag $TAG"
+          echo "Releasing version $RELEASE_VERSION from tag $TAG"
 YML
 
 wc -l .github/workflows/release.yml
 ```
 
-Expected: `41 .github/workflows/release.yml`.
+Expected: `58 .github/workflows/release.yml`.
+
+Four choices in this file are deliberate and are commented in place, because each is a plausible "fix" for a later editor to undo. The workflow-level `permissions: {}` makes every job-level grant explicit rather than a narrowing of an unknown default. `defaults.run.shell: bash` documents that the scripts use bash-only constructs. `timeout-minutes` bounds a wedged run, which matters because `cancel-in-progress: false` would otherwise let it hold the concurrency group for six hours. And the variable is `RELEASE_VERSION`, never `RELEASE_VERSION`: MSBuild promotes environment variables to properties, so a variable named `RELEASE_VERSION` in `$GITHUB_ENV` would silently become the `Version` property for every later `dotnet` command, including restore, with behavior that differs between Debug and Release.
+
+The comments contain no apostrophes. That is not style: an apostrophe in prose inside a heredoc breaks the command transport of the tooling that runs these blocks, so keep them out of anything that goes through `cat <<'YML'`.
 
 - [ ] **Step 2: Run the harness to verify it passes**
 
@@ -293,11 +318,11 @@ A result reading `ASCII text, with CRLF line terminators` is the failure case an
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
-"/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/rhysd.actionlint_Microsoft.Winget.Source_8wekyb3d8bbwe/actionlint" .github/workflows/release.yml
+PATH="/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/koalaman.shellcheck_Microsoft.Winget.Source_8wekyb3d8bbwe:$PATH" "/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/rhysd.actionlint_Microsoft.Winget.Source_8wekyb3d8bbwe/actionlint" .github/workflows/release.yml
 echo "exit: $?"
 ```
 
-Expected: no output before `exit: 0`. actionlint 1.7.12 checks YAML validity, expression syntax, context availability, and runs shellcheck over `run:` blocks.
+Expected: no output before `exit: 0`. actionlint 1.7.12 checks YAML validity, expression syntax, and context availability, and with shellcheck on the PATH (which the command above arranges) it also lints every `run:` block. To confirm shellcheck is genuinely active, add `-verbose` and check that no line says the shellcheck rule was disabled.
 
 actionlint does not validate that referenced actions or their versions exist. Those were confirmed current during planning.
 
@@ -314,9 +339,56 @@ Validates a pushed v* tag against the release-tag pattern and derives
 the package version from it. Build, pack, and release steps follow."
 ```
 
-Expected: `1 file changed, 41 insertions(+)` and a line creating `.github/workflows/release.yml`.
+Expected: `1 file changed, 58 insertions(+)` and a line creating `.github/workflows/release.yml`.
 
 If the commit reports more than one file, something else was staged. The working tree carries an unstaged modification to `.claude/settings.local.json` that must not be swept in. Check with `git show --stat HEAD` and reset if needed.
+
+### Task 1.4: Apply the quality-review amendments
+
+**Files:**
+- Modify: `.github/workflows/release.yml`
+- Modify: `$SCRATCH/test-version-step.sh` (scratchpad)
+
+**Why this task exists.** Tasks 1.1 to 1.3 were first executed with an earlier 41-line version of the workflow, committed as `1b8c467`. The code quality review of that commit found four things worth fixing before Chunk 2 multiplied the cost: the version variable was named `VERSION`, which MSBuild promotes to the `Version` property for every later `dotnet` command; there was no workflow-level `permissions: {}` floor; no `timeout-minutes` bounded a wedged run despite `cancel-in-progress: false`; and the rejection message did not name the two rules people trip on. It also found that actionlint had been running without shellcheck. All of those are now folded into the heredocs in Tasks 1.1 and 1.2 above, so a fresh executor gets the final form directly and this task is a no-op for them. If your checkout is at `1b8c467`, do the following.
+
+- [ ] **Step 1: Rewrite both files to the current Task 1.1 and Task 1.2 content**
+
+Re-run Task 1.1 Step 1 and Task 1.2 Step 1 exactly as written above. Both are whole-file overwrites, so re-running them is safe.
+
+Expected: `85` for the harness and `58 .github/workflows/release.yml` for the workflow.
+
+- [ ] **Step 2: Re-verify**
+
+Re-run Task 1.2 Step 2 (harness), Task 1.2 Step 3 (staged form is LF), and Task 1.3 Step 1 (actionlint with shellcheck).
+
+Expected: `PASS: all 18 cases behaved as specified`; `/dev/stdin: ASCII text`; actionlint prints nothing and exits 0.
+
+- [ ] **Step 3: Confirm the diff is only the intended amendments**
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+git diff --cached --stat .github/workflows/release.yml
+git diff --cached .github/workflows/release.yml | grep -E '^[-+]' | grep -v -E '^(\+\+\+|---)' | grep -c -E 'RELEASE_VERSION|permissions: \{\}|timeout-minutes|shell: bash|^\+\s*#|rc\.01'
+```
+
+Expected: the stat line shows `1 file changed` with both insertions and deletions, and the count is at least 12, meaning the changed lines are the rename, the permissions floor, the timeout, the shell default, the comments, and the message. Any changed line outside those categories is a transcription error.
+
+- [ ] **Step 4: Commit**
+
+```bash
+cd /c/Users/AddamBoord/source/repos/StateStore
+git add .github/workflows/release.yml
+git commit -m "Harden release workflow after review
+
+Rename the derived version to RELEASE_VERSION: MSBuild promotes
+environment variables to properties, so VERSION would silently become
+the Version property for every dotnet command in the job. Add a
+workflow-level permissions floor, bound the build job with a timeout so
+a wedged run cannot hold the concurrency group, name the two rules the
+tag message previously omitted, and comment the deliberate choices."
+```
+
+Expected: `1 file changed` and a `wc -l .github/workflows/release.yml` of 58.
 
 ---
 
@@ -374,7 +446,7 @@ Order matters and actionlint will not check it: a correctly indented step append
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
-"/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/rhysd.actionlint_Microsoft.Winget.Source_8wekyb3d8bbwe/actionlint" .github/workflows/release.yml
+PATH="/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/koalaman.shellcheck_Microsoft.Winget.Source_8wekyb3d8bbwe:$PATH" "/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/rhysd.actionlint_Microsoft.Winget.Source_8wekyb3d8bbwe/actionlint" .github/workflows/release.yml
 echo "exit: $?"
 ```
 
@@ -396,7 +468,7 @@ This was verified during planning, so actionlint should accept `hashFiles` in a 
 
 then change the two setup conditions to `steps.sdkpin.outputs.pinned == 'true'` and `== 'false'`.
 
-Taking that fallback changes two later expectations, and both are stated as checksums, so note them now: Task 2.3 Step 1's step list becomes twelve names with `Detect global.json` third, and Chunk 3 Step 1's `wc -l` reports 191 rather than 181. Neither is then a transcription error.
+Taking that fallback changes two later expectations, and both are stated as checksums, so note them now: Task 2.3 Step 1's step list becomes twelve names with `Detect global.json` third, and Chunk 3 Step 1's `wc -l` reports 216 rather than 206. Neither is then a transcription error.
 
 - [ ] **Step 3: Commit**
 
@@ -420,13 +492,13 @@ cd /c/Users/AddamBoord/source/repos/StateStore
 export SCRATCH="/c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan"
 mkdir -p "$SCRATCH"
 rm -rf "$SCRATCH/packages" && mkdir -p "$SCRATCH/packages"
-VERSION=0.0.1-probe
+RELEASE_VERSION=0.0.1-probe
 dotnet restore StateStore.sln
-dotnet build StateStore.sln -c Release --no-restore -p:Version="$VERSION" -p:ContinuousIntegrationBuild=true
-dotnet test StateStore.sln -c Release --no-build -p:Version="$VERSION" -p:ContinuousIntegrationBuild=true --logger trx --results-directory "$SCRATCH/test-results"
+dotnet build StateStore.sln -c Release --no-restore -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true
+dotnet test StateStore.sln -c Release --no-build -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true --logger trx --results-directory "$SCRATCH/test-results"
 shopt -s nullglob
 for proj in src/*/*.csproj; do
-  dotnet pack "$proj" -c Release --no-build -o "$SCRATCH/packages" -p:Version="$VERSION" -p:ContinuousIntegrationBuild=true
+  dotnet pack "$proj" -c Release --no-build -o "$SCRATCH/packages" -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true
 done
 ls -l "$SCRATCH/packages"
 ```
@@ -482,9 +554,9 @@ fi
 
 for pkg in artifacts/packages/*.nupkg artifacts/packages/*.snupkg; do
   case "$pkg" in
-    *".$VERSION.nupkg"|*".$VERSION.snupkg") ;;
+    *".$RELEASE_VERSION.nupkg"|*".$RELEASE_VERSION.snupkg") ;;
     *)
-      echo "::error::Package '$(basename "$pkg")' does not carry version $VERSION."
+      echo "::error::Package '$(basename "$pkg")' does not carry version $RELEASE_VERSION."
       exit 1
       ;;
   esac
@@ -514,27 +586,27 @@ touch src/StateStore/StateStore.csproj artifacts/packages/StateStore.0.0.1-probe
 
 echo "=== case 1: matching version, no .snupkg (today's state) ==="
 : > summary.md
-VERSION=0.0.1-probe GITHUB_STEP_SUMMARY="$T/summary.md" bash "$SCRATCH/verify.sh"; echo "exit: $?"
+RELEASE_VERSION=0.0.1-probe GITHUB_STEP_SUMMARY="$T/summary.md" bash "$SCRATCH/verify.sh"; echo "exit: $?"
 cat summary.md
 
 echo "=== case 2: version mismatch ==="
-VERSION=9.9.9 GITHUB_STEP_SUMMARY="$T/summary.md" bash "$SCRATCH/verify.sh"; echo "exit: $?"
+RELEASE_VERSION=9.9.9 GITHUB_STEP_SUMMARY="$T/summary.md" bash "$SCRATCH/verify.sh"; echo "exit: $?"
 
 echo "=== case 3: no packages ==="
 rm artifacts/packages/*.nupkg
-VERSION=0.0.1-probe GITHUB_STEP_SUMMARY="$T/summary.md" bash "$SCRATCH/verify.sh"; echo "exit: $?"
+RELEASE_VERSION=0.0.1-probe GITHUB_STEP_SUMMARY="$T/summary.md" bash "$SCRATCH/verify.sh"; echo "exit: $?"
 
 echo "=== case 4: nested projects ==="
 touch artifacts/packages/StateStore.0.0.1-probe.nupkg
 mkdir -p src/Providers/Foo src/Providers/Bar
 touch src/Providers/Foo/Foo.csproj src/Providers/Bar/Bar.csproj
-VERSION=0.0.1-probe GITHUB_STEP_SUMMARY="$T/summary.md" bash "$SCRATCH/verify.sh"; echo "exit: $?"
+RELEASE_VERSION=0.0.1-probe GITHUB_STEP_SUMMARY="$T/summary.md" bash "$SCRATCH/verify.sh"; echo "exit: $?"
 
 echo "=== case 5: hidden dir must not trip the nested check ==="
 rm -rf src/Providers
 mkdir -p src/.claude/worktrees/wt/src/StateStore
 touch src/.claude/worktrees/wt/src/StateStore/StateStore.csproj
-VERSION=0.0.1-probe GITHUB_STEP_SUMMARY="$T/summary.md" bash "$SCRATCH/verify.sh"; echo "exit: $?"
+RELEASE_VERSION=0.0.1-probe GITHUB_STEP_SUMMARY="$T/summary.md" bash "$SCRATCH/verify.sh"; echo "exit: $?"
 ```
 
 Expected:
@@ -576,7 +648,7 @@ Expected: no probe-versioned package remains. A pre-existing `StateStore.1.0.0.n
 
 - [ ] **Step 1: Append the steps**
 
-`$VERSION` comes from `$GITHUB_ENV`, written in Task 1.2. Restore is the one step with no `-p:Version=`, because NuGet resolution does not depend on the version being produced.
+`$RELEASE_VERSION` comes from `$GITHUB_ENV`, written in Task 1.2. Restore is the one step with no `-p:Version=`, because NuGet resolution does not depend on the version being produced. That claim is only true because the variable is not named `VERSION`: MSBuild promotes environment variables to properties, so a `VERSION` entry in `$GITHUB_ENV` would reach restore as the `Version` property regardless of the command line.
 
 The verify block is the text you tested in Task 2.2, unchanged.
 
@@ -592,13 +664,13 @@ cat >> .github/workflows/release.yml <<'YML'
         run: |
           set -euo pipefail
           dotnet build StateStore.sln -c Release --no-restore \
-            -p:Version="$VERSION" -p:ContinuousIntegrationBuild=true
+            -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true
 
       - name: Test
         run: |
           set -euo pipefail
           dotnet test StateStore.sln -c Release --no-build \
-            -p:Version="$VERSION" -p:ContinuousIntegrationBuild=true \
+            -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true \
             --logger trx --results-directory artifacts/test-results
 
       - name: Upload test results
@@ -625,7 +697,7 @@ cat >> .github/workflows/release.yml <<'YML'
           for proj in "${projects[@]}"; do
             echo "Packing $proj"
             dotnet pack "$proj" -c Release --no-build -o artifacts/packages \
-              -p:Version="$VERSION" -p:ContinuousIntegrationBuild=true
+              -p:Version="$RELEASE_VERSION" -p:ContinuousIntegrationBuild=true
             echo "- \`$proj\`" >> "$GITHUB_STEP_SUMMARY"
           done
 
@@ -654,9 +726,9 @@ cat >> .github/workflows/release.yml <<'YML'
 
           for pkg in artifacts/packages/*.nupkg artifacts/packages/*.snupkg; do
             case "$pkg" in
-              *".$VERSION.nupkg"|*".$VERSION.snupkg") ;;
+              *".$RELEASE_VERSION.nupkg"|*".$RELEASE_VERSION.snupkg") ;;
               *)
-                echo "::error::Package '$(basename "$pkg")' does not carry version $VERSION."
+                echo "::error::Package '$(basename "$pkg")' does not carry version $RELEASE_VERSION."
                 exit 1
                 ;;
             esac
@@ -720,7 +792,7 @@ Any other difference means the block was retyped rather than copied. Take the te
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
-"/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/rhysd.actionlint_Microsoft.Winget.Source_8wekyb3d8bbwe/actionlint" .github/workflows/release.yml
+PATH="/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/koalaman.shellcheck_Microsoft.Winget.Source_8wekyb3d8bbwe:$PATH" "/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/rhysd.actionlint_Microsoft.Winget.Source_8wekyb3d8bbwe/actionlint" .github/workflows/release.yml
 echo "exit: $?"
 ```
 
@@ -771,6 +843,7 @@ cat >> .github/workflows/release.yml <<'YML'
   release:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     env:
@@ -789,6 +862,13 @@ cat >> .github/workflows/release.yml <<'YML'
         run: |
           set -euo pipefail
           shopt -s nullglob
+          # A stale output reference yields an empty string, not an error. Left
+          # unchecked, empty reads as "not a pre-release" and a -rc tag would be
+          # published as the latest stable release.
+          if [[ "$PRERELEASE" != "true" && "$PRERELEASE" != "false" ]]; then
+            echo "::error::prerelease flag from the build job is '$PRERELEASE'; expected true or false."
+            exit 1
+          fi
           assets=(artifacts/packages/*.nupkg artifacts/packages/*.snupkg)
           if [[ ${#assets[@]} -eq 0 ]]; then
             echo "::error::No package assets to attach to release $TAG."
@@ -810,13 +890,13 @@ YML
 wc -l .github/workflows/release.yml
 ```
 
-Expected: `181 .github/workflows/release.yml`. This number is the whole-file checksum for this plan: a different count means a transcription error somewhere in Chunks 1 to 3, not a design problem.
+Expected: `206 .github/workflows/release.yml`. This number is the whole-file checksum for this plan: a different count means a transcription error somewhere in Chunks 1 to 3, not a design problem.
 
 - [ ] **Step 2: Lint**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
-"/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/rhysd.actionlint_Microsoft.Winget.Source_8wekyb3d8bbwe/actionlint" .github/workflows/release.yml
+PATH="/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/koalaman.shellcheck_Microsoft.Winget.Source_8wekyb3d8bbwe:$PATH" "/c/Users/AddamBoord/AppData/Local/Microsoft/WinGet/Packages/rhysd.actionlint_Microsoft.Winget.Source_8wekyb3d8bbwe/actionlint" .github/workflows/release.yml
 echo "exit: $?"
 ```
 
@@ -1333,7 +1413,7 @@ The plan is complete when all of these hold. The three rows marked gated depend 
 |---|---|---|---|
 | 1 | The version step accepts and rejects exactly as specified, and derives the right version and pre-release flag | `bash "$SCRATCH/test-version-step.sh"` prints PASS for all 18 cases | No |
 | 2 | The workflow is valid and shellcheck-clean | actionlint exits 0 with no output | No |
-| 3 | The assembled file matches this plan | `wc -l .github/workflows/release.yml` reports 181, or 191 if Task 2.1's `hashFiles` fallback was taken | No |
+| 3 | The assembled file matches this plan | `wc -l .github/workflows/release.yml` reports 206, or 216 if Task 2.1's `hashFiles` fallback was taken | No |
 | 4 | The verify logic catches mismatched versions, missing packages, and nested projects | Task 2.2 Step 4's five cases behave as tabulated | No |
 | 5 | A command-line version overrides the csproj value | The local probe produced `StateStore.0.0.1-probe.nupkg` | No |
 | 6 | Every packable project is reachable by the glob | `find src -mindepth 3 -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*/.*/*'` prints nothing | No |
