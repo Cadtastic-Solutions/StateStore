@@ -76,7 +76,7 @@ The riskiest logic in the workflow is the tag contract, and it is the only part 
 **Files:**
 - Create: `$SCRATCH/test-version-step.sh` (scratchpad, not committed)
 
-- [ ] **Step 1: Write the harness**
+- [x] **Step 1: Write the harness**
 
 This script extracts the first `run: |` block out of the workflow, which is the version step, and executes it against every tag case with `GITHUB_REF_NAME`, `GITHUB_ENV`, and `GITHUB_OUTPUT` pointed at temporary files. It asserts three things per accepted tag (exit status, derived `RELEASE_VERSION`, `prerelease` output) and two per rejected tag (non-zero exit, the expected error text).
 
@@ -181,7 +181,7 @@ wc -l "$SCRATCH/test-version-step.sh"
 
 Expected: `85 /c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan/test-version-step.sh`. A different count means the heredoc was truncated.
 
-- [ ] **Step 2: Run the harness to verify it fails**
+- [x] **Step 2: Run the harness to verify it fails**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -203,7 +203,7 @@ This confirms the harness checks the real file rather than passing vacuously. If
 **Files:**
 - Create: `.github/workflows/release.yml`
 
-- [ ] **Step 1: Write the workflow trigger and validation step**
+- [x] **Step 1: Write the workflow trigger and validation step**
 
 The `run:` block reads the tag from `$GITHUB_REF_NAME`, an environment variable the runner sets. It deliberately does not interpolate `${{ github.ref_name }}` into the script body, which would let a crafted ref name inject shell.
 
@@ -283,7 +283,7 @@ Four choices in this file are deliberate and are commented in place, because eac
 
 The comments contain no contractions or possessives. That is not style: a lone apostrophe in prose inside a heredoc breaks the command transport of the tooling that runs these blocks. Balanced shell quoting like `'$TAG'` is unaffected.
 
-- [ ] **Step 2: Run the harness to verify it passes**
+- [x] **Step 2: Run the harness to verify it passes**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -295,7 +295,7 @@ Expected: 18 lines each beginning `  ok`, then a blank line, then `PASS: all 18 
 
 If an **accept** case fails, the regex is too strict or the version derivation is wrong. If a **reject** case fails, the regex is too permissive, which is the direction that ships a bad package version. Either way, compare the pattern character by character against the spec's Release-tag pattern section, whose accept and reject lists are the source of the harness tables. Do not edit the harness to match a broken pattern.
 
-- [ ] **Step 3: Stage the file and confirm it is stored with LF**
+- [x] **Step 3: Stage the file and confirm it is stored with LF**
 
 The working copy may hold CRLF, which is fine. What matters is the form stored in the repository, because that is what the Linux runner reads.
 
@@ -314,7 +314,7 @@ A result reading `ASCII text, with CRLF line terminators` is the failure case an
 **Files:**
 - Modify: `.github/workflows/release.yml` (staged and committed; no content change)
 
-- [ ] **Step 1: Run actionlint**
+- [x] **Step 1: Run actionlint**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -328,7 +328,7 @@ actionlint does not validate that referenced actions or their versions exist. Th
 
 If the binary is missing on the machine you are working from, install it with `winget install rhysd.actionlint` and re-run. The hardcoded path above is where winget places it.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -351,19 +351,19 @@ If the commit reports more than one file, something else was staged. The working
 
 **Why this task exists.** Tasks 1.1 to 1.3 were first executed with an earlier 41-line version of the workflow, committed as `1b8c467`. The code quality review of that commit found four things worth fixing before Chunk 2 multiplied the cost: the version variable was named `VERSION`, which MSBuild promotes to the `Version` property for every later `dotnet` command; there was no workflow-level `permissions: {}` floor; no `timeout-minutes` bounded a wedged run despite `cancel-in-progress: false`; and the rejection message did not name the two rules people trip on. It also found that actionlint had been running without shellcheck. All of those are now folded into the heredocs in Tasks 1.1 and 1.2 above, so a fresh executor gets the final form directly and this task is a no-op for them. If your checkout is at `1b8c467`, do the following.
 
-- [ ] **Step 1: Rewrite both files to the current Task 1.1 and Task 1.2 content**
+- [x] **Step 1: Rewrite both files to the current Task 1.1 and Task 1.2 content**
 
 Re-run Task 1.1 Step 1 and Task 1.2 Step 1 exactly as written above. Both are whole-file overwrites, so re-running them is safe.
 
 Expected: `85` for the harness and `58 .github/workflows/release.yml` for the workflow.
 
-- [ ] **Step 2: Re-verify**
+- [x] **Step 2: Re-verify**
 
 Re-run Task 1.2 Step 2 (harness), Task 1.2 Step 3 (staged form is LF), and Task 1.3 Step 1 (actionlint with shellcheck).
 
 Expected: `PASS: all 18 cases behaved as specified`; `/dev/stdin: ASCII text`; actionlint prints nothing and exits 0.
 
-- [ ] **Step 3: Confirm the diff is only the intended amendments**
+- [x] **Step 3: Confirm the diff is only the intended amendments**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -373,7 +373,7 @@ git diff --cached .github/workflows/release.yml | grep -E '^[-+]' | grep -v -E '
 
 Expected: the stat line shows `1 file changed, 22 insertions(+), 5 deletions(-)`, and the count is at least 12. The count confirms the changed lines are dominated by the intended amendments. It is not exhaustive: the two blank lines, the `defaults:` and `run:` structural keys, and the five removed lines fall outside the grep pattern and are expected. Read the full `git diff --cached` once; anything that is not the rename, the permissions floor, the timeout, the shell default, a comment, or the message is a transcription error.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -401,7 +401,7 @@ Add the steps that produce the packages. The two riskiest ones, pack and verify,
 **Files:**
 - Modify: `.github/workflows/release.yml`
 
-- [ ] **Step 1: Append the checkout and setup steps**
+- [x] **Step 1: Append the checkout and setup steps**
 
 Two mutually exclusive setup steps. The repository has no `global.json` today, so the second runs. When the pending restructure adds a `global.json` pinned to `10.0.204` with `rollForward: latestPatch`, the first takes over. A bare `dotnet-version: 10.0.x` installs the newest 10.0.x, currently in the 10.0.4xx band, which that pin refuses.
 
@@ -446,7 +446,7 @@ Expected, in this order:
 
 Order matters and actionlint will not check it: a correctly indented step appended in the wrong place lints clean.
 
-- [ ] **Step 2: Lint**
+- [x] **Step 2: Lint**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -474,7 +474,7 @@ then change the two setup conditions to `steps.sdkpin.outputs.pinned == 'true'` 
 
 Taking that fallback changes two later expectations, and both are stated as checksums, so note them now: Task 2.3 Step 1's step list becomes twelve names with `Detect global.json` third, and Chunk 3 Step 1's `wc -l` reports 247 rather than 237. Neither is then a transcription error.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -492,7 +492,7 @@ Expected: `1 file changed, 19 insertions(+)` and `77 .github/workflows/release.y
 
 Before writing the CI steps, confirm the command sequence works against this solution and that the verify logic catches what it claims to.
 
-- [ ] **Step 1: Run the pack sequence with a probe version**
+- [x] **Step 1: Run the pack sequence with a probe version**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -516,7 +516,7 @@ The filename carrying `0.0.1-probe` rather than `1.0.0` is the proof that a comm
 
 The `dotnet test` invocation is included here, with only the results directory changed, so that every command the CI job runs has been executed locally at least once. The `--logger trx` form is correct for this project because it uses `Microsoft.NET.Test.Sdk` with the VSTest runner; a project on the newer Microsoft.Testing.Platform would need `--report-trx` instead.
 
-- [ ] **Step 2: Confirm the glob's depth assumption**
+- [x] **Step 2: Confirm the glob's depth assumption**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -528,7 +528,7 @@ Expected: no output before `exit: 0`. Every packable project sits directly under
 
 The `-not -path '*/.*/*'` clause is required, not cosmetic. Without it this command reports three csproj files inside the nested git worktree at `src/.claude/worktrees/`, which are not part of the build. Note that `-mindepth` is a global option in `find`, so the `-prune` idiom does not work here; path exclusion does.
 
-- [ ] **Step 3: Write the verify logic to a script for testing**
+- [x] **Step 3: Write the verify logic to a script for testing**
 
 The same text goes into the workflow in Task 2.3. Testing it here first means the most intricate bash in the chunk is not first executed against a public tag.
 
@@ -586,7 +586,7 @@ Expected: `39 /c/Users/AddamBoord/AppData/Local/Temp/statestore-release-plan/ver
 
 The project-count check is what makes the per-project pack loop honest. `dotnet pack` on a project whose `IsPackable` evaluates to `false` exits 0 and writes nothing, so without the count a project could vanish from a release while the run stayed green. With one project today the zero-package check covers it; the count is for the restructure, which adds two more.
 
-- [ ] **Step 4: Test the verify logic against six cases**
+- [x] **Step 4: Test the verify logic against six cases**
 
 This runs in a synthetic tree under `$SCRATCH`, never against the real repository, so the nested-project cases cannot disturb your checkout.
 
@@ -644,7 +644,7 @@ Case 4 proving the message is one line matters: GitHub annotations do not accept
 
 Note what these cases do not cover: the `.snupkg` arm of the version check is never exercised, because no symbol package exists until the restructure enables `IncludeSymbols`. The arm is present so that it works when they appear.
 
-- [ ] **Step 5: Clean up the probe output**
+- [x] **Step 5: Clean up the probe output**
 
 `GeneratePackageOnBuild` also left a probe-versioned package in the project's own output directory.
 
@@ -668,7 +668,7 @@ Expected: no probe-versioned package remains. A pre-existing `StateStore.1.0.0.n
 **Files:**
 - Modify: `.github/workflows/release.yml`
 
-- [ ] **Step 1: Append the steps**
+- [x] **Step 1: Append the steps**
 
 `$RELEASE_VERSION` comes from `$GITHUB_ENV`, written in Task 1.2. Restore is the one step with no `-p:Version=`, because NuGet resolution does not depend on the version being produced. That claim is only true because the variable is not named `VERSION`: MSBuild promotes environment variables to properties, so a `VERSION` entry in `$GITHUB_ENV` would reach restore as the `Version` property regardless of the command line.
 
@@ -797,7 +797,7 @@ Expected, in this order:
 
 The summary line for each project is written after its `dotnet pack` succeeds, so a failed pack cannot leave a summary claiming the project was packed.
 
-- [ ] **Step 2: Confirm the verify block matches the version you tested**
+- [x] **Step 2: Confirm the verify block matches the version you tested**
 
 The verify logic now exists twice, once as `$SCRATCH/verify.sh` and once inside the YAML at ten spaces of indentation. Extract it back out and diff, so a transcription slip cannot leave CI running logic that was never tested.
 
@@ -819,7 +819,7 @@ Expected: `identical`, with no diff output above it. The `-B` flag is needed bec
 
 Any other difference means the block was retyped rather than copied. Take the tested version in `$SCRATCH/verify.sh` as authoritative, correct the YAML, and re-run Task 2.2 Step 4 afterwards.
 
-- [ ] **Step 3: Lint**
+- [x] **Step 3: Lint**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -829,7 +829,7 @@ echo "exit: $?"
 
 Expected: no output before `exit: 0`. shellcheck runs over every `run:` block here, so quoting mistakes surface now.
 
-- [ ] **Step 4: Re-run the version-step harness**
+- [x] **Step 4: Re-run the version-step harness**
 
 The file changed, so confirm the extraction still lands on the version step. The harness fails loudly if the first `run: |` block is no longer the one holding `PATTERN=`.
 
@@ -841,7 +841,7 @@ bash "$SCRATCH/test-version-step.sh"; echo "exit: $?"
 
 Expected: `PASS: all 18 cases behaved as specified` and `exit: 0`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -864,7 +864,7 @@ Expected: `1 file changed, 96 insertions(+)` and `173 .github/workflows/release.
 
 **Why this task exists.** Tasks 2.1 to 2.3 were first executed as commits `630133d` and `c13179b`, leaving a 160-line file. The code quality review of that state found one gap that matters and three cheap hardenings: `dotnet pack` on a project whose `IsPackable` evaluates to `false` exits 0 and writes nothing, so a project could vanish from a release while the run stayed green; the `--no-build` coupling between Build, Test, and Pack was unstated at the point an editor would break it; the test-results upload fired on any earlier failure, not only a test failure; and checkout left git credentials on disk for `dotnet pack` to read. All four are now folded into the heredocs in Tasks 2.1, 2.2, and 2.3 above, so a fresh executor gets the final form directly and this task is a no-op for them. If your checkout is at `c13179b`, do the following. The appends in Tasks 2.1 and 2.3 are not idempotent, so the file is first reset to its Chunk 1 form.
 
-- [ ] **Step 1: Reset the workflow to the Chunk 1 content**
+- [x] **Step 1: Reset the workflow to the Chunk 1 content**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -874,19 +874,19 @@ wc -l .github/workflows/release.yml
 
 Expected: `58 .github/workflows/release.yml`. Commit `e2bb913` is the amended Chunk 1 file; it is the same blob as at `1f3df1e`.
 
-- [ ] **Step 2: Re-run Task 2.1 Step 1**
+- [x] **Step 2: Re-run Task 2.1 Step 1**
 
 Expected: the four step names in order, then `wc -l .github/workflows/release.yml` reports 77.
 
-- [ ] **Step 3: Re-run Task 2.2 Step 3 and Step 4**
+- [x] **Step 3: Re-run Task 2.2 Step 3 and Step 4**
 
 Expected: `39` for `verify.sh`, and all six cases behave as tabulated.
 
-- [ ] **Step 4: Re-run Task 2.3 Steps 1 to 4**
+- [x] **Step 4: Re-run Task 2.3 Steps 1 to 4**
 
 Expected: eleven step names in order; `identical` from the verify diff; actionlint prints nothing and exits 0; the harness reports `PASS: all 18 cases behaved as specified`.
 
-- [ ] **Step 5: Confirm the diff against the previous commit is only the intended amendments**
+- [x] **Step 5: Confirm the diff against the previous commit is only the intended amendments**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -898,7 +898,7 @@ wc -l .github/workflows/release.yml
 
 Expected: `1 file changed, 14 insertions(+), 1 deletion(-)`; the only removed line is `        if: failure()`; and `173 .github/workflows/release.yml`. The fourteen added lines are the `with:` block under checkout (four lines), the two-line Build comment, `id: test`, the replacement `if:` line, and the six-line project-count block. Anything else is a transcription error.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -923,7 +923,7 @@ Expected: `1 file changed, 14 insertions(+), 1 deletion(-)`.
 **Files:**
 - Modify: `.github/workflows/release.yml`
 
-- [ ] **Step 1: Append the job**
+- [x] **Step 1: Append the job**
 
 This is the only job with write permission. The tag reaches bash through the job's `env` mapping rather than inline interpolation, so a crafted ref name cannot inject shell. `--verify-tag` makes `gh` refuse to create a release for a tag absent from the remote.
 
@@ -1004,7 +1004,7 @@ Expected: `237 .github/workflows/release.yml`. This number is the whole-file che
 
 Three details in this job are load-bearing and easy to undo by accident. The probe captures `isDraft` rather than discarding output, because `gh release create` is three API calls and a failure partway leaves a draft that a plain retry would silently accept. `--verify-tag` stops `gh` from creating a missing tag at the default branch HEAD and publishing a release whose contents disagree with it. And `GH_TOKEN` sits on the step rather than the job, so the only write credential in the workflow is not in the artifact download step's environment.
 
-- [ ] **Step 2: Lint**
+- [x] **Step 2: Lint**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -1014,7 +1014,7 @@ echo "exit: $?"
 
 Expected: no output before `exit: 0`.
 
-- [ ] **Step 3: Confirm the job graph and permissions**
+- [x] **Step 3: Confirm the job graph and permissions**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -1038,7 +1038,7 @@ Expected, in this order:
 
 Two things to confirm by eye: `build` is read-only, and `release` is the only writer.
 
-- [ ] **Step 4: Re-confirm the stored line endings**
+- [x] **Step 4: Re-confirm the stored line endings**
 
 The file has been appended to three times since Task 1.2 Step 3. Check the whole assembled file once.
 
@@ -1050,7 +1050,7 @@ git show :.github/workflows/release.yml | file -
 
 Expected: `/dev/stdin: ASCII text`, with no CRLF qualifier.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -1072,7 +1072,7 @@ Expected: `1 file changed, 64 insertions(+)` and `237 .github/workflows/release.
 
 **Why this task exists.** Task 3.1 was first executed as commit `4d0a345`, leaving a 219-line file whose release job used a bare `gh release view` probe. The code quality review of that state found that `gh release create` performs three API calls, creating the release as a draft, uploading assets, then publishing, so a failure partway through leaves a draft. A plain retry then took the update branch, attached the assets, and exited 0 with nothing published: a green run over an unpublished release. That is now fixed, along with four cheap hardenings. All are folded into the Task 3.1 heredoc above, so a fresh executor gets the final form and this task is a no-op for them. If your checkout is at `4d0a345`, do the following.
 
-- [ ] **Step 1: Reset the file to its post-Chunk-2 state and re-append**
+- [x] **Step 1: Reset the file to its post-Chunk-2 state and re-append**
 
 The append in Task 3.1 is not idempotent, so drop the old release job first.
 
@@ -1084,15 +1084,15 @@ wc -l .github/workflows/release.yml
 
 Expected: `173 .github/workflows/release.yml`.
 
-- [ ] **Step 2: Re-run Task 3.1 Step 1**
+- [x] **Step 2: Re-run Task 3.1 Step 1**
 
 Expected: `237 .github/workflows/release.yml`.
 
-- [ ] **Step 3: Re-run Task 3.1 Steps 2 to 4**
+- [x] **Step 3: Re-run Task 3.1 Steps 2 to 4**
 
 Expected: actionlint prints nothing and exits 0; the job graph grep matches; the staged form is `ASCII text`.
 
-- [ ] **Step 4: Confirm the diff is only the intended amendments**
+- [x] **Step 4: Confirm the diff is only the intended amendments**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -1113,7 +1113,7 @@ Expected: `1 file changed, 23 insertions(+), 5 deletions(-)`, and these five rem
 
 The two env lines move to the step, and the three `gh` lines are replaced by their reordered forms. Everything added is the step-level `env` block, the draft probe with its four-line comment, the draft failure branch, the three-line `--verify-tag` comment, and the six-line step-summary block. Anything else is a transcription error.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -1151,7 +1151,7 @@ Only the tags and releases are cleaned up. Nothing in that list is misleading, s
 
 ### Task 4.0: Preconditions
 
-- [ ] **Step 1: Confirm the gh CLI is authenticated as the right account**
+- [x] **Step 1: Confirm the gh CLI is authenticated as the right account**
 
 Two accounts may be logged in. Every step in this chunk depends on the active one having write access to the org repository.
 
@@ -1163,7 +1163,7 @@ git remote -v
 
 Expected: `Active account: true` under `github.com` for an account with push rights to `Cadtastic-Solutions/StateStore`, and `origin` pointing at `https://github.com/Cadtastic-Solutions/StateStore.git`.
 
-- [ ] **Step 2: Confirm with the user that immutable releases are not enabled**
+- [x] **Step 2: Confirm with the user that immutable releases are not enabled**
 
 If the repository or organization enforces immutable releases, a published release cannot be deleted. That would leave the throwaway `v0.0.1-ci.1` release on a public repository permanently, turning this chunk from briefly-public into irreversible. It would also break the re-run path the workflow's create-or-update design depends on.
 
@@ -1173,7 +1173,7 @@ Ask the user to confirm the setting is off, under the repository's Settings then
 
 If it is enabled, or if the user cannot confirm either way, **stop and say so.** Do not proceed to Task 4.1: there is no cleanup path for a release that cannot be deleted. Task 4.2 is unaffected, because it never creates a release.
 
-- [ ] **Step 3: Confirm the workflow is in the commit that will be tagged**
+- [x] **Step 3: Confirm the workflow is in the commit that will be tagged**
 
 A tag-push workflow runs from the tagged commit, so the file has to already be there.
 
@@ -1185,7 +1185,7 @@ git ls-tree HEAD .github/workflows/release.yml
 
 Expected: `git ls-tree` prints a blob line ending in `.github/workflows/release.yml`. Empty output means Chunks 1 to 3 are not committed.
 
-- [ ] **Step 4: Publish the branch**
+- [x] **Step 4: Publish the branch**
 
 The branch has no upstream today, so this is its first publication to the public repository. It carries the unrelated restructure design work as well as this workflow.
 
@@ -1202,7 +1202,7 @@ If the push is rejected, stop and report why. Do not force.
 
 ### Task 4.1: Happy path with a throwaway pre-release tag
 
-- [ ] **Step 1: Push the throwaway tag**
+- [x] **Step 1: Push the throwaway tag**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -1214,7 +1214,7 @@ Expected: a line reading `* [new tag]         v0.0.1-ci.1 -> v0.0.1-ci.1`.
 
 If the push is rejected, stop and report why rather than retrying with force.
 
-- [ ] **Step 2: Watch the run**
+- [x] **Step 2: Watch the run**
 
 `gh run watch` takes the run ID as a required positional argument, so capture it first. A tag-triggered run carries the tag name in `headBranch`, so filter on that rather than taking the most recent run: there is a short registration delay after a tag push, and an unfiltered `--limit 1` can return an older run.
 
@@ -1245,7 +1245,7 @@ gh run view "$RUN_ID" --repo "$REPO" --log-failed
 
 Three retry options, cheapest first. If only the `release` job failed, `gh run rerun "$RUN_ID" --repo "$REPO" --failed` reruns it against the stored artifact and exercises the create-or-update path. If the workflow file itself needs a fix, commit it and push a fresh tag such as `v0.0.1-ci.2`, which the pattern accepts, avoiding any delete-and-re-tag dance. Only if you want to reuse the same tag, run Step 5 first, then start again from Step 1.
 
-- [ ] **Step 3: Verify the release**
+- [x] **Step 3: Verify the release**
 
 ```bash
 export MSYS_NO_PATHCONV=1
@@ -1260,7 +1260,7 @@ Expected, all four:
 
 The version in the asset filename is the key assertion: it proves the tag drove the package version rather than the csproj's `1.0.0`.
 
-- [ ] **Step 4: Verify the run summary content**
+- [x] **Step 4: Verify the run summary content**
 
 The step summary is not exposed by the API, so confirm the same facts from the logs. Opening the run's summary page in a browser with `gh run view "$RUN_ID" --repo "$REPO" --web` shows the rendered version if you prefer.
 
@@ -1274,7 +1274,7 @@ gh run view "$RUN_ID" --repo "$REPO" --log | grep -E "Packing src/|StateStore\.0
 
 Expected: at least a line containing `Packing src/StateStore/StateStore.csproj` and a line naming `StateStore.0.0.1-ci.1.nupkg`. The first comes from the Pack step's own echo, the second from the pack output and the Verify step's directory listing.
 
-- [ ] **Step 5: Delete the release and the tag**
+- [x] **Step 5: Delete the release and the tag**
 
 The delete path depends on whether a release exists. If the run failed in `build`, it does not, and `gh release delete` would exit non-zero on a release that was never created.
 
@@ -1304,7 +1304,7 @@ Order matters. The remote delete comes first, then the local delete, then the pr
 
 **Preconditions:** every step of Task 4.0 must have been completed, including the branch publication, whether or not Task 4.1 was run. Task 4.0 Step 2 is the one exception: this task never creates a release, so the immutable-releases setting does not affect it.
 
-- [ ] **Step 1: Push a tag the glob accepts but the pattern rejects**
+- [x] **Step 1: Push a tag the glob accepts but the pattern rejects**
 
 `v0.0.1.1` matches the coarse trigger glob `v[0-9]+.[0-9]+.[0-9]+*`, so the workflow starts and then fails validation. That is exactly the case worth testing: a malformed tag the trigger cannot filter out.
 
@@ -1316,7 +1316,7 @@ git push origin v0.0.1.1
 
 Expected: `* [new tag]         v0.0.1.1 -> v0.0.1.1`.
 
-- [ ] **Step 2: Confirm the run fails at validation**
+- [x] **Step 2: Confirm the run fails at validation**
 
 Filter by tag again. Without `--branch`, an unfiltered `--limit 1` can return Task 4.1's successful run, and then every assertion below inverts and appears to pass.
 
@@ -1340,7 +1340,7 @@ Expected:
 
 The `release` job being skipped rather than failed is the assertion that matters: the failure was contained to validation and nothing was ever checked out, restored, or published.
 
-- [ ] **Step 3: Confirm no release was created**
+- [x] **Step 3: Confirm no release was created**
 
 ```bash
 export MSYS_NO_PATHCONV=1
@@ -1351,7 +1351,7 @@ Expected: `release not found` and a non-zero exit.
 
 If a release does exist, the pattern was mis-transcribed and accepted the tag. In that case use `gh release delete v0.0.1.1 --repo Cadtastic-Solutions/StateStore --yes --cleanup-tag` in place of Step 4, then fix the pattern and re-run Chunk 1's harness. Deleting only the tag would orphan the release.
 
-- [ ] **Step 4: Delete the tag**
+- [x] **Step 4: Delete the tag**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -1373,7 +1373,7 @@ Expected: both listings print nothing.
 **Files:**
 - Modify: `docs/superpowers/specs/2026-09-09-release-workflow-design.md`
 
-- [ ] **Step 1: Update the status line**
+- [x] **Step 1: Update the status line**
 
 Two cases. Pick the one that matches what actually happened.
 
@@ -1389,11 +1389,11 @@ If Chunk 4 was declined or skipped, use instead:
 **Status:** Implemented — statically verified (actionlint, tag-pattern harness, local pack probe). Not yet exercised by a real tag push.
 ```
 
-- [ ] **Step 2: Update the spec's Verification section**
+- [x] **Step 2: Update the spec's Verification section**
 
 Its preamble reads "To be carried out by the implementation plan," which goes stale the moment the status flips. Replace that line with a note saying the checks were carried out by `docs/superpowers/plans/2026-09-09-release-workflow.md`, and mark any step Chunk 4 did not run as not performed.
 
-- [ ] **Step 3: Correct the stale find command in the spec**
+- [x] **Step 3: Correct the stale find command in the spec**
 
 The spec's `build` step 9 documents the nested-project check without the three `-not -path` exclusions, so as written it reports a false positive in this very repository. Chunk 2 proved the exclusions are load-bearing.
 
@@ -1410,7 +1410,7 @@ find src -mindepth 3 -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' 
 
 Expected afterwards: every `mindepth 3` line in the spec carries all three exclusions.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -1436,7 +1436,7 @@ A note alone is not enough. `Microsoft.Data.Sqlite` at `10.0.8` appears as copy-
 **Files:**
 - Modify: `docs/superpowers/plans/2026-05-22-repo-restructure.md`
 
-- [ ] **Step 1: Correct the four Sqlite version literals**
+- [x] **Step 1: Correct the four Sqlite version literals**
 
 Only the `Microsoft.Data.Sqlite` references change. The `Microsoft.Extensions.*` packages at `10.0.8` are unaffected by the advisory and stay as they are.
 
@@ -1464,7 +1464,7 @@ stale: 0
 fixed: 4
 ```
 
-- [ ] **Step 2: Insert the warning note**
+- [x] **Step 2: Insert the warning note**
 
 The header block ends with the `**Spec:**` line at line 11, followed by a blank line and a `---` rule at line 13. Insert the note between them, so it sits directly under the header and above the File map. Do this after Step 1, whose edits do not shift any line numbers.
 
@@ -1482,7 +1482,7 @@ The header block ends with the `**Spec:**` line at line 11, followed by a blank 
 > spec lists CI as a non-goal; that is superseded by the release workflow spec above.
 ```
 
-- [ ] **Step 3: Correct the same literal in the restructure design doc**
+- [x] **Step 3: Correct the same literal in the restructure design doc**
 
 The spec's Follow-up names the design doc, and its line 199 still specifies `Microsoft.Data.Sqlite 10.0.8` for the future `StateStore.Sqlite.csproj`. Fixing only the plan would leave the two documents contradicting each other.
 
@@ -1503,7 +1503,7 @@ echo "fixed: $(grep -c 'Microsoft\.Data\.Sqlite 10\.0\.12' docs/superpowers/spec
 
 Expected: `stale: 0` and `fixed: 1`.
 
-- [ ] **Step 4: Verify the note landed and commit both files**
+- [x] **Step 4: Verify the note landed and commit both files**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
@@ -1530,7 +1530,7 @@ Do not count total `10.0.8` occurrences as a check. That number drops from 11 li
 **Files:**
 - Modify: `docs/superpowers/plans/2026-09-09-release-workflow.md`
 
-- [ ] **Step 1: Tick the completed checkboxes**
+- [x] **Step 1: Tick the completed checkboxes**
 
 Go through this plan and change `- [ ]` to `- [x]` for every step actually performed. Leave the rest unticked and add a one-line note under each saying why it was skipped. An unticked box is information; a falsely ticked one is a lie to the next reader.
 
@@ -1538,7 +1538,7 @@ If Chunk 4 was declined, its boxes stay empty with a note pointing at Task 5.1's
 
 Task 5.4's own boxes will still be open at this point, since it runs after this task. Note that in the commit message rather than pre-ticking them.
 
-- [ ] **Step 2: Verify and commit**
+- [x] **Step 2: Verify and commit**
 
 ```bash
 cd /c/Users/AddamBoord/source/repos/StateStore
