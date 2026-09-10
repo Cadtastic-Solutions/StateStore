@@ -361,3 +361,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Claude Code worktrees. Agent sessions create isolated checkouts here; they are
+# full copies of the repo and must never be committed into it. Matched at any
+# depth, since sessions may root a worktree below the repo root.
+**/.claude/worktrees/
